@@ -14,6 +14,8 @@ import type { CorrelationKey } from "../correlations/select";
 export interface KlaEnsembleResult {
   mean:         number;                     // mean kLa [h⁻¹]
   std:          number;                     // std dev [h⁻¹]
+  min:          number;                     // lower ensemble member kLa [h⁻¹]
+  max:          number;                     // higher ensemble member kLa [h⁻¹]
   components:   Record<string, number>;     // per-correlation kLa [h⁻¹]
   correlations: string[];
 }
@@ -60,9 +62,8 @@ export function buildOperatingPoint(params: {
 /**
  * Compute kLa ensemble (mean, std, per-correlation components).
  *
- * For non-Newtonian broths, mu_L and K are overridden with the apparent
- * viscosity derived from biomass_cdw; n_pl is set to 1 so the Zhu formula
- * reduces to Newtonian with K = mu_app.
+ * For non-Newtonian broths, mu_L is overridden with the apparent viscosity
+ * derived from biomass_cdw before Garcia-Ochoa & Gomez is evaluated.
  *
  * Pg is the total gassed power [W] for the operating scenario.
  */
@@ -81,8 +82,6 @@ export function computeKlaEnsemble(
     effectiveOp = {
       ...op,
       mu_L:  mu_app,
-      K:     mu_app,   // for Zhu: K = mu_app Pa·s; with n_pl=1 → mu_app_mPas = K×1000
-      n_pl:  1,
     };
   }
 
@@ -96,6 +95,8 @@ export function computeKlaEnsemble(
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const variance = values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length;
   const std = Math.sqrt(variance);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
 
-  return { mean, std, components, correlations: keys };
+  return { mean, std, min, max, components, correlations: keys };
 }

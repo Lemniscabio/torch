@@ -29,8 +29,6 @@ import {
   G,
   ATMOSPHERIC_PRESSURE_PA,
   METABOLIC_HEAT_FACTOR,
-  U_JACKET,
-  T_CW_OUTLET_OFFSET,
   RQ_DEFAULTS,
   CO2_BIOMASS_THRESHOLD,
   CO2_OUR_THRESHOLD,
@@ -126,6 +124,19 @@ function confidenceLabel(c: Confidence): string {
   }
 }
 
+function klaCorrelationLabel(key: string): string {
+  const labels: Record<string, string> = {
+    vant_riet_coalescing: "van't Riet, coalescing",
+    vant_riet_non_coalescing: "van't Riet, non-coalescing",
+    linek_1987: "Linek et al. 1987",
+    linek_2004: "Linek et al. 2004",
+    moucha_2003: "Moucha et al. 2003",
+    garcia_ochoa_2004: "Garcia-Ochoa & Gomez 2004",
+    zhu_2001: "Zhu et al. 2001",
+  };
+  return labels[key] ?? key;
+}
+
 function riskBadgeClass(score: RiskScore): string {
   return `risk-badge risk-badge-${score}`;
 }
@@ -147,139 +158,130 @@ function compositeLabel(score: number, theme: "light" | "dark" = "dark"): { labe
   return { label: "Critical Risk", colour: colours.critical };
 }
 
-// --- SVG Semicircular Risk Gauge ---
+// --- Radar chart summary ---
 
-function RiskGauge({ score, label, colour, theme }: { score: number; label: string; colour: string; theme: "light" | "dark" }) {
-  // Arc from 180° (left) to 0° (right) — semicircle
-  const cx = 140;
-  const cy = 130;
-  const r = 100;
-  const strokeWidth = 14;
+const RADAR_DOMAIN_ORDER: RiskDomain[] = ["otr", "mixing", "shear", "co2", "heat"];
 
-  // Full arc path (semicircle, left to right)
-  const startAngle = Math.PI; // 180°
-  const endAngle = 0; // 0°
-
-  function polarToCartesian(angle: number) {
-    return {
-      x: cx + r * Math.cos(angle),
-      y: cy - r * Math.sin(angle),
-    };
+function radarRadius(score: RiskScore): number {
+  switch (score) {
+    case "low": return 1.0;
+    case "moderate": return 0.75;
+    case "high": return 0.5;
+    case "critical": return 0.25;
   }
+}
 
-  const arcStart = polarToCartesian(startAngle);
-  const arcEnd = polarToCartesian(endAngle);
-
-  // Background arc path
-  const bgPath = `M ${arcStart.x} ${arcStart.y} A ${r} ${r} 0 0 1 ${arcEnd.x} ${arcEnd.y}`;
-
-  // Value arc — sweeps proportionally along the same semicircle
-  // large-arc-flag is always 0: the value arc is at most 180° (the full semicircle),
-  // so the "short" arc around center (cx, cy) is always the correct one.
-  const valueAngle = startAngle - (score / 100) * Math.PI;
-  const valueEnd = polarToCartesian(valueAngle);
-  const valuePath = `M ${arcStart.x} ${arcStart.y} A ${r} ${r} 0 0 1 ${valueEnd.x} ${valueEnd.y}`;
-
-  // Needle position
-  const needleAngle = startAngle - (score / 100) * Math.PI;
-  const needleLength = r - 20;
-  const needleTip = {
-    x: cx + needleLength * Math.cos(needleAngle),
-    y: cy - needleLength * Math.sin(needleAngle),
+function RadarChart({
+  title,
+  scores,
+  theme,
+}: {
+  title: string;
+  scores: Record<RiskDomain, RiskScore>;
+  theme: "light" | "dark";
+}) {
+  const chartSize = 280;
+  const cx = chartSize / 2;
+  const cy = chartSize / 2;
+  const maxR = 88;
+  const axisLabelOffset = 24;
+  const axisLabels: Record<RiskDomain, string> = {
+    otr: "OTR",
+    mixing: "Mixing",
+    shear: "Shear",
+    co2: "CO2",
+    heat: "Heat",
   };
+  const gridStroke = theme === "light" ? "rgba(0,0,0,0.16)" : "rgba(255,255,255,0.16)";
+  const axisStroke = theme === "light" ? "rgba(0,0,0,0.22)" : "rgba(255,255,255,0.22)";
+  const rings: { level: RiskScore; radius: number }[] = [
+    { level: "critical", radius: 0.25 },
+    { level: "high", radius: 0.5 },
+    { level: "moderate", radius: 0.75 },
+    { level: "low", radius: 1.0 },
+  ];
 
-  // Gradient stops for the arc
-  const gradientId = "gauge-gradient";
+  const axisPoints = RADAR_DOMAIN_ORDER.map((domain, index) => {
+    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / RADAR_DOMAIN_ORDER.length;
+    const x = cx + maxR * Math.cos(angle);
+    const y = cy + maxR * Math.sin(angle);
+    const lx = cx + (maxR + axisLabelOffset) * Math.cos(angle);
+    const ly = cy + (maxR + axisLabelOffset) * Math.sin(angle);
+    return { domain, angle, x, y, lx, ly };
+  });
+
+  const ringPoints = (radiusScale: number): string =>
+    axisPoints
+      .map(({ angle }) => `${cx + maxR * radiusScale * Math.cos(angle)},${cy + maxR * radiusScale * Math.sin(angle)}`)
+      .join(" ");
+
+  const dataPoints = axisPoints.map(({ domain, angle }) => {
+    const r = maxR * radarRadius(scores[domain]);
+    return {
+      domain,
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+      score: scores[domain],
+    };
+  });
+  const dataPolygon = dataPoints.map((p) => `${p.x},${p.y}`).join(" ");
+  const worstScore = RADAR_DOMAIN_ORDER.reduce<RiskScore>((worst, domain) => {
+    const severity: Record<RiskScore, number> = { low: 0, moderate: 1, high: 2, critical: 3 };
+    return severity[scores[domain]] > severity[worst] ? scores[domain] : worst;
+  }, "low");
+  const fillColour = riskColour(worstScore, theme);
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width="280" height="160" viewBox="0 0 280 160">
-        <defs>
-          <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#34d399" />
-            <stop offset="35%" stopColor="#fbbf24" />
-            <stop offset="65%" stopColor="#fb923c" />
-            <stop offset="100%" stopColor="#f87171" />
-          </linearGradient>
-          <filter id="gauge-glow">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        {/* Background track */}
-        <path
-          d={bgPath}
-          fill="none"
-          stroke={theme === "light" ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.06)"}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-        />
-
-        {/* Value arc — exact same radius, drawn on top of background */}
-        {score > 0 && (
-          <path
-            d={valuePath}
-            fill="none"
-            stroke={`url(#${gradientId})`}
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
+    <div className="glass-panel-sm p-5 w-full max-w-[360px]">
+      <p className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.1em] mb-3 text-center">{title}</p>
+      <div className="flex justify-center">
+        <svg width={chartSize} height={chartSize} viewBox={`0 0 ${chartSize} ${chartSize}`} role="img" aria-label={`${title} risk radar`}>
+          {rings.map((ring) => (
+            <polygon
+              key={ring.level}
+              points={ringPoints(ring.radius)}
+              fill={riskColour(ring.level, theme)}
+              fillOpacity={0.06}
+              stroke={gridStroke}
+              strokeWidth="1"
+            />
+          ))}
+          {axisPoints.map((p) => (
+            <line key={p.domain} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke={axisStroke} strokeWidth="1" />
+          ))}
+          <polygon
+            points={dataPolygon}
+            fill={fillColour}
+            fillOpacity={0.24}
+            stroke={fillColour}
+            strokeWidth="2"
           />
-        )}
-
-        {/* Tick marks */}
-        {[0, 25, 50, 75, 100].map((tick) => {
-          const angle = startAngle - (tick / 100) * Math.PI;
-          const outerR = r + strokeWidth / 2 + 4;
-          const innerR = r + strokeWidth / 2 + 10;
-          const inner = { x: cx + outerR * Math.cos(angle), y: cy - outerR * Math.sin(angle) };
-          const outer = { x: cx + innerR * Math.cos(angle), y: cy - innerR * Math.sin(angle) };
-          return (
-            <line
-              key={tick}
-              x1={inner.x}
-              y1={inner.y}
-              x2={outer.x}
-              y2={outer.y}
-              stroke={theme === "light" ? "rgba(0,0,0,0.12)" : "rgba(192,192,208,0.2)"}
+          {dataPoints.map((p) => (
+            <circle
+              key={p.domain}
+              cx={p.x}
+              cy={p.y}
+              r="4.5"
+              fill={riskColour(p.score, theme)}
+              stroke={theme === "light" ? "#ffffff" : "#0b1020"}
               strokeWidth="1.5"
             />
-          );
-        })}
-
-        {/* Needle */}
-        <line
-          x1={cx}
-          y1={cy}
-          x2={needleTip.x}
-          y2={needleTip.y}
-          stroke={colour}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          filter="url(#gauge-glow)"
-        />
-        {/* Needle hub */}
-        <circle cx={cx} cy={cy} r="6" fill={colour} opacity="0.9" />
-        <circle cx={cx} cy={cy} r="3" fill={theme === "light" ? "#f5f6fa" : "#0a0a0f"} />
-
-        {/* Score text */}
-        <text
-          x={cx}
-          y={cy - 20}
-          textAnchor="middle"
-          className="font-mono"
-          style={{ fontSize: "36px", fontWeight: 700, fill: colour }}
-        >
-          {score}
-        </text>
-      </svg>
-      <p className="text-base font-semibold -mt-2" style={{ color: colour }}>
-        {label}
-      </p>
-      <p className="text-[11px] text-silver-600 mt-0.5">Composite across 5 risk domains</p>
+          ))}
+          {axisPoints.map((p) => (
+            <text
+              key={`${p.domain}-label`}
+              x={p.lx}
+              y={p.ly}
+              textAnchor={Math.abs(p.lx - cx) < 8 ? "middle" : p.lx > cx ? "start" : "end"}
+              dominantBaseline="middle"
+              style={{ fontSize: "11px", fill: "var(--text-tertiary)", fontWeight: 600 }}
+            >
+              {axisLabels[p.domain]}
+            </text>
+          ))}
+        </svg>
+      </div>
+      <div className="text-[10px] text-silver-600 text-center mt-2">Outer ring: low risk. Inner ring: critical risk.</div>
     </div>
   );
 }
@@ -333,8 +335,8 @@ function MitigationBlock({
       recommendation = `Required kLa of ${fmt(otr.kla_required)} h\u207B\u00B9 exceeds standard P/V achievability at ${fmtInt(inputs.v_target)} L. Options: (1) Reduce target biomass ~20% to bring OUR within standard kLa range. (2) Dual Rushton or Rushton-to-PBT cascade configuration. (3) Pressure overlay (+0.5 bar increases C* by ~15%).`;
       break;
     case "mixing":
-      if (mixing.da_max != null) {
-        recommendation = `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Feed produces Da = ${fmt(mixing.da_max, 3)} \u2014 substrate gradients expected. Options: (1) Switch to continuous feed. (2) Relocate feed port to impeller high-turbulence zone. (3) Reduce peak feed rate and extend feed duration.`;
+      if (mixing.da_eff != null) {
+        recommendation = `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Da_eff = ${fmt(mixing.da_eff, 3)} \u2014 mixing/uptake mismatch expected. Options: (1) Switch to continuous feed. (2) Relocate feed port to impeller high-turbulence zone. (3) Reduce peak feed rate and extend feed duration.`;
       } else {
         recommendation = `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s \u2014 pH excursions likely. Options: (1) Add a second impeller. (2) Reduce target vessel H/D ratio. (3) Increase agitation speed within shear limits.`;
       }
@@ -382,6 +384,8 @@ function OtrDetail({ otr, derived, inputs, results }: {
   inputs: ProcessInputs;
   results: PartialAssessmentResult;
 }) {
+  const growthOxygen = results.growth_oxygen;
+
   return (
     <div className="space-y-5 animate-fade-in">
       <h3 className="text-sm font-semibold text-silver-100 border-b border-black/[0.06] dark:border-white/[0.06] pb-2">
@@ -397,7 +401,11 @@ function OtrDetail({ otr, derived, inputs, results }: {
         <h4 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-1">Key Parameters</h4>
         <table className="w-full text-sm">
           <tbody>
-            <Row label="OUR peak" value={`${fmt(derived.our_peak)} mmol/L/h`} estimated={inputs.our_mode === "estimate"} />
+            <Row
+              label="OUR peak (selected)"
+              value={`${fmt(otr.our_peak_selected ?? derived.our_peak)} mmol/L/h`}
+              estimated={inputs.our_mode === "estimate"}
+            />
             <Row label="C*" value={`${fmt(derived.c_star, 3)} mmol/L`} />
             <Row label="C_L (at DO setpoint)" value={`${fmt(derived.c_l, 3)} mmol/L`} />
             <Row label="Driving force (C* − C_L)" value={`${fmt(derived.driving_force, 3)} mmol/L`} />
@@ -437,10 +445,85 @@ function OtrDetail({ otr, derived, inputs, results }: {
           </tbody>
         </table>
       </div>
+      {otr.kla_components && Object.keys(otr.kla_components).length > 0 && (
+        <div>
+          <h4 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-1">kLa Ensemble Debug</h4>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] text-silver-600 border-b border-black/[0.06] dark:border-white/[0.06]">
+                <th className="text-left py-1.5">Correlation</th>
+                <th className="text-right py-1.5">kLa at target 1.0x P/V (h^-1)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(otr.kla_components).map(([key, value]) => (
+                <tr key={key} className="border-b border-black/[0.04] dark:border-white/[0.03]">
+                  <td className="py-1.5 text-silver-400">{klaCorrelationLabel(key)}</td>
+                  <td className="text-right font-mono text-silver-200">{fmt(value)}</td>
+                </tr>
+              ))}
+              <tr className="border-b border-black/[0.04] dark:border-white/[0.03]">
+                <td className="py-1.5 text-silver-400">Ensemble mean</td>
+                <td className="text-right font-mono text-silver-200">{fmt(otr.kla_target_moderate)}</td>
+              </tr>
+              {otr.kla_std != null && (
+                <tr className="border-b border-black/[0.04] dark:border-white/[0.03]">
+                  <td className="py-1.5 text-silver-400">Ensemble SD</td>
+                  <td className="text-right font-mono text-silver-200">{fmt(otr.kla_std)}</td>
+                </tr>
+              )}
+              {otr.kla_min != null && otr.kla_max != null && (
+                <tr className="border-b border-black/[0.04] dark:border-white/[0.03]">
+                  <td className="py-1.5 text-silver-400">Ensemble range</td>
+                  <td className="text-right font-mono text-silver-200">{fmt(otr.kla_min)}-{fmt(otr.kla_max)}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <p className="text-[11px] text-silver-600 mt-1">
+            Debug values are the individual correlation outputs used to compute the target moderate kLa ensemble mean.
+          </p>
+        </div>
+      )}
+      {growthOxygen && (
+        <div>
+          <h4 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-1">Growth Capacity</h4>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] text-silver-600 border-b border-black/[0.06] dark:border-white/[0.06]">
+                <th className="text-left py-1.5">Scale</th>
+                <th className="text-right py-1.5">mu_O2 (h^-1)</th>
+                <th className="text-right py-1.5">mu_substrate (h^-1)</th>
+                <th className="text-right py-1.5">mu ratio</th>
+                <th className="text-right py-1.5">Limiting</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-black/[0.04] dark:border-white/[0.03]">
+                <td className="py-1.5 text-silver-400">Lab</td>
+                <td className="text-right font-mono text-silver-200">{fmt(growthOxygen.lab.mu_o2, 3)}</td>
+                <td className="text-right font-mono text-silver-200">{fmt(growthOxygen.lab.mu_substrate, 3)}</td>
+                <td className="text-right font-mono text-silver-200">{fmt(growthOxygen.lab.mu_ratio, 2)}</td>
+                <td className="text-right capitalize text-silver-300">{growthOxygen.lab.limiting}</td>
+              </tr>
+              <tr className="border-b border-black/[0.04] dark:border-white/[0.03]">
+                <td className="py-1.5 text-silver-400">Target</td>
+                <td className="text-right font-mono text-silver-200">{fmt(growthOxygen.target.mu_o2, 3)}</td>
+                <td className="text-right font-mono text-silver-200">{fmt(growthOxygen.target.mu_substrate, 3)}</td>
+                <td className="text-right font-mono text-silver-200">{fmt(growthOxygen.target.mu_ratio, 2)}</td>
+                <td className="text-right capitalize text-silver-300">{growthOxygen.target.limiting}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="text-[11px] text-silver-600 mt-1">
+            mu ratio = mu_O2 / mu_substrate; lower values indicate oxygen capacity is below substrate-implied growth demand.
+          </p>
+        </div>
+      )}
       <div>
         <h4 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-1">Scoring</h4>
         <p className="text-sm text-silver-400">
-          kLa ratio (moderate scenario) = {fmt(otr.kla_ratio, 2)} &rarr; <strong style={{ color: riskColour(otr.score) }}>{riskLabel(otr.score)}</strong>
+          OTR/OUR (target, moderate scenario) = {fmt(otr.kla_ratio, 2)} &rarr; <strong style={{ color: riskColour(otr.score) }}>{riskLabel(otr.score)}</strong>
         </p>
         <p className="text-[11px] text-silver-600 mt-1">
           Thresholds: &gt;1.5 Low, &ge;1.0 Moderate, &ge;0.7 High, &lt;0.7 Critical
@@ -483,12 +566,14 @@ function MixingDetail({ mixing, derived, inputs, results }: {
           </tbody>
         </table>
       </div>
-      {inputs.process_type === "fed_batch" && mixing.da_max != null && (
+      {mixing.da_eff != null && (
         <div>
           <h4 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-1">Damköhler Number</h4>
           <table className="w-full text-sm">
             <tbody>
-              <Row label="Da = \u03B8_mix / \u03C4_feed" value={fmt(mixing.da_max, 3)} />
+              <Row label="Da_eff (target)" value={mixing.da_eff != null ? fmt(mixing.da_eff, 3) : "\u2014"} />
+              <Row label="Da_eff (lab)" value={mixing.da_eff_lab != null ? fmt(mixing.da_eff_lab, 3) : "\u2014"} />
+              <Row label="Da_max (target, info)" value={mixing.da_max != null ? fmt(mixing.da_max, 3) : "\u2014"} />
               <Row label="Da score" value={mixing.da_score ? riskLabel(mixing.da_score) : "\u2014"} />
             </tbody>
           </table>
@@ -498,7 +583,7 @@ function MixingDetail({ mixing, derived, inputs, results }: {
         <h4 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-1">Scoring</h4>
         <p className="text-sm text-silver-400">
           pH control score: <strong className="text-silver-200">{riskLabel(mixing.ph_score)}</strong>
-          {mixing.da_score && <>, Da score: <strong className="text-silver-200">{riskLabel(mixing.da_score)}</strong></>}
+          {mixing.da_score && <>, Da_eff score: <strong className="text-silver-200">{riskLabel(mixing.da_score)}</strong></>}
           {" \u2192 "}Overall: <strong style={{ color: riskColour(mixing.score) }}>{riskLabel(mixing.score)}</strong>
         </p>
       </div>
@@ -614,7 +699,6 @@ function HeatDetail({ heat, derived, inputs, results }: {
   inputs: ProcessInputs;
   results: PartialAssessmentResult;
 }) {
-  const tCwOutlet = inputs.t_cw_inlet + T_CW_OUTLET_OFFSET;
   return (
     <div className="space-y-5 animate-fade-in">
       <h3 className="text-sm font-semibold text-silver-100 border-b border-black/[0.06] dark:border-white/[0.06] pb-2">
@@ -635,9 +719,36 @@ function HeatDetail({ heat, derived, inputs, results }: {
             <Row label="Q_metabolic" value={`${fmt(heat.q_metabolic, 2)} kW`} />
             <Row label="T_process" value={`${fmt(inputs.temperature)}\u00B0C`} />
             <Row label="T_cw inlet" value={`${fmt(inputs.t_cw_inlet)}\u00B0C`} />
-            <Row label="T_cw outlet (assumed)" value={`${fmt(tCwOutlet)}\u00B0C`} />
+            <Row label="T_cw outlet (calculated)" value={`${fmt(heat.t_cw_outlet ?? inputs.t_cw_inlet)}\u00B0C`} />
             <Row label="\u0394T_lm" value={`${fmt(heat.dt_lm, 1)}\u00B0C`} />
-            <Row label="U_jacket" value={`${U_JACKET} W/m\u00B2\u00B7K`} />
+            <Row
+              label="h_broth (calculated)"
+              value={heat.h_broth != null ? `${fmt(heat.h_broth, 1)} W/m\u00B2\u00B7K` : "\u2014"}
+            />
+            <Row
+              label="h_jacket (calculated)"
+              value={heat.h_jacket != null ? `${fmt(heat.h_jacket, 1)} W/m\u00B2\u00B7K` : "\u2014"}
+            />
+            <Row
+              label="R_broth = 1/h_i"
+              value={heat.r_broth != null ? `${fmt(heat.r_broth, 6)} m\u00B2\u00B7K/W` : "\u2014"}
+            />
+            <Row
+              label="R_wall = \u03B4/k"
+              value={heat.r_wall != null ? `${fmt(heat.r_wall, 6)} m\u00B2\u00B7K/W` : "\u2014"}
+            />
+            <Row
+              label="R_jacket = 1/h_o"
+              value={heat.r_jacket != null ? `${fmt(heat.r_jacket, 6)} m\u00B2\u00B7K/W` : "\u2014"}
+            />
+            <Row
+              label="R_total"
+              value={heat.r_total != null ? `${fmt(heat.r_total, 6)} m\u00B2\u00B7K/W` : "\u2014"}
+            />
+            <Row
+              label="U_overall (calculated)"
+              value={heat.u_overall != null ? `${fmt(heat.u_overall, 1)} W/m\u00B2\u00B7K` : "\u2014"}
+            />
             <Row label="A_jacket" value={`${fmt(heat.a_jacket, 2)} m\u00B2`} />
             <Row label="Q_cool_max" value={`${fmt(heat.q_cool_max, 2)} kW`} />
             <Row label="Heat ratio" value={fmt(heat.heat_ratio, 2)} />
@@ -910,16 +1021,32 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
   const toggleDomain = (d: RiskDomain) =>
     setSelectedDomain(selectedDomain === d ? null : d);
 
-  // Composite score
-  const allScores: RiskScore[] = [otr.score, mixing.score, shear.score, co2.score, heat.score];
+  const labDomainScores: Record<RiskDomain, RiskScore> = {
+    otr: otr.score_lab ?? otr.score,
+    mixing: mixing.score_lab ?? mixing.score,
+    shear: shear.score_lab ?? shear.score,
+    co2: co2.lab?.score ?? co2.score,
+    heat: heat.lab?.score ?? heat.score,
+  };
+
+  const targetDomainScores: Record<RiskDomain, RiskScore> = {
+    otr: otr.score_target ?? otr.score,
+    mixing: mixing.score_target ?? mixing.score,
+    shear: shear.score_target ?? shear.score,
+    co2: co2.target?.score ?? co2.score,
+    heat: heat.target?.score ?? heat.score,
+  };
+
+  // Composite score (target scale)
+  const allScores: RiskScore[] = RADAR_DOMAIN_ORDER.map((d) => targetDomainScores[d]);
   const composite = compositeScore(allScores);
   const compositeInfo = compositeLabel(composite, theme);
 
   // Key numbers for each domain card
   const domainKeyNumbers: Record<RiskDomain, string> = {
-    otr: `kLa ratio: ${fmt(otr.kla_ratio, 2)}`,
-    mixing: mixing.da_max != null
-      ? `\u03B8: ${fmt(mixing.theta_mix_target)}s \u00B7 Da: ${fmt(mixing.da_max, 3)}`
+    otr: `OTR/OUR: ${fmt(otr.kla_ratio, 2)}`,
+    mixing: mixing.da_eff != null
+      ? `\u03B8: ${fmt(mixing.theta_mix_target)}s \u00B7 Da_eff: ${fmt(mixing.da_eff, 3)}`
       : `\u03B8_mix: ${fmt(mixing.theta_mix_target)}s`,
     shear: `v_tip: ${fmt(shear.tip_speed)} m/s`,
     co2: co2.activated && co2.pco2_bottom != null
@@ -929,11 +1056,11 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
   };
 
   const domainScores: Record<RiskDomain, RiskScore> = {
-    otr: otr.score,
-    mixing: mixing.score,
-    shear: shear.score,
-    co2: co2.score,
-    heat: heat.score,
+    otr: targetDomainScores.otr,
+    mixing: targetDomainScores.mixing,
+    shear: targetDomainScores.shear,
+    co2: targetDomainScores.co2,
+    heat: targetDomainScores.heat,
   };
 
   const domainConfidence: Record<RiskDomain, Confidence> = {
@@ -1006,9 +1133,12 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
 
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8 space-y-8">
 
-        {/* ===== SECTION 1: Risk Gauge + Context ===== */}
+        {/* ===== SECTION 1: Radar Summary + Context ===== */}
         <div className="glass-panel p-8 flex flex-col items-center">
-          <RiskGauge score={composite} label={compositeInfo.label} colour={compositeInfo.colour} theme={theme} />
+          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 place-items-center">
+            <RadarChart title="Lab Scale Risk Profile" scores={labDomainScores} theme={theme} />
+            <RadarChart title="Target Scale Risk Profile" scores={targetDomainScores} theme={theme} />
+          </div>
 
           {/* Context bar */}
           <div className="mt-6 flex items-center gap-3 text-sm text-silver-400 flex-wrap justify-center">

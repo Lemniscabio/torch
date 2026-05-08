@@ -48,6 +48,7 @@ export function runAllDerivations(inputs: ProcessInputs): DerivationOutput {
     inputs.our_measured,
     biomass_cdw,
     inputs.organism_species,
+    inputs.biomass_density_category,
   );
 
   // D2 — Vessel geometry
@@ -55,7 +56,7 @@ export function runAllDerivations(inputs: ProcessInputs): DerivationOutput {
   const target_geometry = deriveVesselGeometry(inputs.v_target, inputs.h_d_target, inputs.impeller_type, inputs.dt_ratio_target);
 
   // D3 — Power input
-  const power = derivePowerInput(inputs.impeller_type, inputs.n_impellers, inputs.rpm, lab_geometry);
+  const power = derivePowerInput(inputs.impeller_type, inputs.n_impellers, inputs.rpm, lab_geometry, inputs.vvm);
   flags.push(...derivePowerFlags(inputs.vvm, power.pv_lab));
 
   // Viscosity

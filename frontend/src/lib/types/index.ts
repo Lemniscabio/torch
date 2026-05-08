@@ -1,6 +1,8 @@
 // TypeScript interfaces for Lemnisca Fermentation Scale-Up Risk Predictor
 // All field IDs and structures per /docs/lemnisca_scaleup_app_dev_spec.md
 
+import type { BatchGrowthResult, FedBatchGrowthResult } from "@/lib/engine/growth";
+
 // --- Enums and Literal Types ---
 
 export type OrganismClass = "bacteria" | "yeast";
@@ -18,6 +20,9 @@ export type ProcessType = "batch" | "fed_batch";
 export type ImpellerType = "rushton" | "pitched_blade" | "marine" | "unknown";
 
 export type BiomassUnit = "g_L_CDW" | "OD600";
+
+export type BiomassDensityCategory = "low_density" | "high_density";
+export type ScaleupCriterion = "power_per_volume" | "kla" | "shear";
 
 // "exhaust_gas" retained for type-safety during transition; engine support
 // will be dropped in Stage 3. New UI only exposes "measured" | "estimate".
@@ -57,6 +62,7 @@ export interface ProcessInputs {
   // Section B: Scale Definition
   v_lab: number;        // Lab working volume (L), > 0, <= 1000
   v_target: number;     // Target working volume (L), > v_lab
+  scaleup_criterion?: ScaleupCriterion; // Scale-up criterion selector, default power_per_volume
 
   // Section C: Lab-scale Vessel & Agitation
   // Note: these describe the lab vessel; target geometry is derived from v_target + h_d_target.
@@ -64,6 +70,7 @@ export interface ProcessInputs {
   h_d_lab: number;                  // H/D ratio (lab), default 1.2, range 0.5–4.0
   h_d_target: number;               // H/D ratio (target), range 0.5–4.0
   n_impellers: number;              // Number of impellers (lab vessel), 1–4
+  n_impellers_target?: number;      // Number of impellers (target vessel), defaults to n_impellers
   impeller_type: ImpellerType;      // Default: rushton
   dt_ratio_lab?: number;             // d/T ratio override for lab vessel (default: from impeller type)
   dt_ratio_target?: number;          // d/T ratio override for target vessel (default: from impeller type)
@@ -73,10 +80,10 @@ export interface ProcessInputs {
   // Section D: Oxygen & Biomass
   biomass: number;                  // Peak biomass, > 0, <= 200
   biomass_unit: BiomassUnit;        // Default: g_L_CDW
+  biomass_density_category?: BiomassDensityCategory; // Low/high density category used to derive biomass in new UI
   our_mode: OurMode;                // OUR input mode, default: estimate
   our_measured?: number;            // OUR measured value (mmol/L/h), required if our_mode == measured
-  /** @deprecated — exhaust_gas mode removed from UI in Stage 2 */
-  o2_inlet?: number;                // Exhaust gas inlet O2 (%), default 20.9
+  o2_inlet?: number;                // Sparger inlet O2 mole fraction (%), default 20.9
   /** @deprecated */
   o2_outlet?: number;               // Exhaust gas outlet O2 (%)
   /** @deprecated */
@@ -158,30 +165,66 @@ export interface DerivedParameters {
 
 export interface OtrRiskResult {
   score: RiskScore;
+  score_lab: RiskScore;                     // Lab-scale OTR/OUR score
+  score_target: RiskScore;                  // Target-scale OTR/OUR score
+  our_peak_selected?: number;               // mmol/L/h — selected OUR used in risk calculation
+  our_peak_lab?: number;                     // mmol/L/h — lab growth-derived OUR from calculateOur
   kla_required: number;                     // h⁻¹
   kla_lab: number;                          // h⁻¹ (achievable at lab)
   kla_target_conservative: number;          // h⁻¹ (0.5× P/V)
   kla_target_moderate: number;              // h⁻¹ (1.0× P/V)
   kla_target_aggressive: number;            // h⁻¹ (2.0× P/V)
-  kla_ratio: number;                        // achievable / required (moderate scenario)
+  kla_ratio: number;                        // OTR/OUR at target (moderate scenario); retained key for compatibility
+  otr_capacity_lab?: number;                // mmol/L/h
+  otr_capacity_target?: number;             // mmol/L/h
+  otr_our_ratio_lab?: number;               // OTR/OUR at lab scale
+  otr_our_ratio_target?: number;            // OTR/OUR at target scale
   pv_conservative: number;                  // W/m³
   pv_moderate: number;                      // W/m³
   pv_aggressive: number;                    // W/m³
   correlations_used?: string[];
   kla_std?: number;
+  kla_min?: number;
+  kla_max?: number;
   kla_components?: Record<string, number>;
+  confidence: Confidence;
+  driver: string;
+}
+
+export interface GrowthOxygenScaleRiskResult {
+  score: RiskScore;
+  mu_o2: number;                         // h⁻¹ — oxygen-limited specific growth rate
+  mu_substrate: number;                  // h⁻¹ — substrate-limited specific growth rate
+  mu_ratio: number;                      // μ_O2 / μ_substrate
+  limiting: "substrate" | "oxygen";
+  confidence: Confidence;
+  driver: string;
+  batch?: BatchGrowthResult;
+  fed_batch?: FedBatchGrowthResult;
+}
+
+export interface GrowthOxygenRiskResult {
+  score: RiskScore;                      // worst of lab and target
+  lab: GrowthOxygenScaleRiskResult;
+  target: GrowthOxygenScaleRiskResult;
   confidence: Confidence;
   driver: string;
 }
 
 export interface MixingRiskResult {
   score: RiskScore;
+  score_lab?: RiskScore;                    // Lab-scale Damkohler score (when available)
+  score_target?: RiskScore;                 // Target-scale Damkohler score (when available)
   theta_mix_lab: number;                    // Lab mixing time (s)
   theta_mix_target: number;                 // Target mixing time (s)
   // Kinetic Damköhler numbers (populated when biomass > 0)
-  da_max?: number;                          // Conservative Da (μ_max-based) — primary risk indicator
-  da_eff?: number;                          // Informational Da (μ_eff from OUR)
-  da_score?: RiskScore;                     // Score based on da_max
+  da_max?: number;                          // Conservative Da (μ_max-based) at target
+  da_eff?: number;                          // Effective Da (μ_eff-based) at target — primary risk indicator
+  da_eff_lab?: number;                      // Effective Da at lab scale
+  da_eff_target?: number;                   // Effective Da at target scale
+  da_score?: RiskScore;                     // Score based on target da_eff
+  da_score_lab?: RiskScore;                 // Score based on lab da_eff
+  da_score_target?: RiskScore;              // Score based on target da_eff
   mu_eff?: number;                          // h⁻¹ — bulk-average μ inferred from OUR
   ph_score: RiskScore;                      // pH control score (θ_mix threshold)
   confidence: Confidence;
@@ -190,18 +233,40 @@ export interface MixingRiskResult {
 
 export interface ShearRiskResult {
   score: RiskScore;
+  score_lab: RiskScore;                     // Lab-scale tip-speed-margin score
+  score_target: RiskScore;                  // Target-scale tip-speed-margin score
+  n_lab?: number;                           // Lab impeller speed (rev/s)
   n_target: number;                         // Target impeller speed (rev/s)
+  tip_speed_lab?: number;                   // Tip speed at lab (m/s)
   tip_speed: number;                        // Tip speed at target (m/s)
   tip_speed_threshold: number;              // Organism threshold (m/s)
+  tip_speed_ratio_lab?: number;             // lab tip_speed / threshold
+  tip_speed_margin_lab?: number;            // threshold / lab tip_speed
   tip_speed_ratio: number;                  // tip_speed / threshold (actual / critical)
   tip_speed_margin: number;                 // threshold / tip_speed (critical / actual); <1 = risk
   margin_score: RiskScore;                  // risk score derived from tip_speed_margin
+  margin_score_lab: RiskScore;              // lab-scale risk score derived from tip_speed_margin_lab
+  margin_score_target: RiskScore;           // target-scale risk score derived from tip_speed_margin
   confidence: Confidence;
   driver: string;
 }
 
+export interface Co2ScaleRiskResult {
+  cer: number;                              // CO2 evolution rate (mmol/L/h)
+  kla_co2: number;                          // kLa for CO2 (h^-1)
+  y_co2_out: number;                        // exhaust gas CO2 mole fraction (-)
+  pco2_gas_avg: number;                     // log-mean gas-phase pCO2 (bar)
+  pco2_bulk: number;                        // dissolved CO2 contribution (bar)
+  pco2_bottom: number;                      // total pCO2 at vessel bottom (bar)
+  dp_hydro: number;                         // hydrostatic pressure (Pa)
+  pco2_margin: number;                      // pco2_critical / pco2_bottom
+  margin_score: RiskScore;                  // risk score derived from pco2_margin
+  score: RiskScore;                         // scale score (same as margin_score)
+}
+
 export interface Co2RiskResult {
   score: RiskScore;
+  margin_score?: RiskScore;                // risk score derived from pco2_margin
   activated: boolean;                       // Whether detailed calc was triggered
   cer?: number;                             // CO₂ evolution rate (mmol/L/h)
   kla_co2?: number;                         // kLa for CO₂ (h⁻¹)
@@ -212,18 +277,56 @@ export interface Co2RiskResult {
   dp_hydro?: number;                        // Hydrostatic pressure (Pa)
   pco2_critical?: number;                   // Organism inhibition threshold (bar)
   pco2_margin?: number;                     // pco2_critical / pco2_bottom; <1 = risk
+  lab?: Co2ScaleRiskResult;
+  target?: Co2ScaleRiskResult;
   confidence: Confidence;
   driver: string;
 }
 
+export interface HeatScaleRiskResult {
+  q_metabolic: number;                      // Metabolic heat generation (kW)
+  a_jacket: number;                         // Jacket area (m^2)
+  dt_lm: number;                            // Log-mean temperature difference (K)
+  q_cool_max: number;                       // Available cooling capacity (kW)
+  heat_ratio: number;                       // Q_metabolic / Q_cool_max
+  heat_transfer_margin: number;             // Q_cool_max / Q_metabolic
+  margin_score: RiskScore;                  // risk score derived from heat_transfer_margin
+  score: RiskScore;                         // scale score (same as margin_score)
+  t_cw_outlet: number;                      // Calculated cooling-water outlet temp (C)
+  u_overall: number;                        // Overall U (W/m^2-K)
+  h_broth: number;                          // Broth-side film coefficient (W/m^2-K)
+  h_jacket: number;                         // Jacket-side film coefficient (W/m^2-K)
+  r_broth: number;                          // Broth-side resistance (m^2-K/W)
+  r_wall: number;                           // Wall resistance (m^2-K/W)
+  r_jacket: number;                         // Jacket-side resistance (m^2-K/W)
+  r_total: number;                          // Total resistance (m^2-K/W)
+  cooling_water_delta_t: number;            // Cooling-water temperature rise (C)
+  jacket_re: number;                        // Jacket Reynolds number (-)
+  wall_material: "glass" | "stainless_steel";
+}
+
 export interface HeatRiskResult {
   score: RiskScore;
+  margin_score?: RiskScore;                 // risk score derived from heat_transfer_margin
   q_metabolic: number;                      // Metabolic heat generation (kW)
   a_jacket: number;                         // Jacket surface area (m²)
   dt_lm: number;                            // Log-mean temperature difference (K)
   q_cool_max: number;                       // Maximum cooling capacity (kW)
   heat_ratio: number;                       // Q_metabolic / Q_cool_max
+  heat_transfer_margin?: number;            // Q_cool_max / Q_metabolic; lower => higher risk
   t_cw_outlet?: number;                     // Computed cooling water outlet temp (°C) — Stage 5
+  u_overall?: number;                       // Overall U from film/wall resistances (W/m²·K)
+  h_broth?: number;                         // Broth-side film coefficient (W/m²·K)
+  h_jacket?: number;                        // Jacket-side film coefficient (W/m²·K)
+  r_broth?: number;                         // Broth-side thermal resistance (m²·K/W)
+  r_wall?: number;                          // Wall thermal resistance (m²·K/W)
+  r_jacket?: number;                        // Jacket-side thermal resistance (m²·K/W)
+  r_total?: number;                         // Total thermal resistance (m²·K/W)
+  cooling_water_delta_t?: number;           // Jacket cooling-water temperature rise (°C)
+  jacket_re?: number;                       // Jacket-side Reynolds number (dimensionless)
+  wall_material?: "glass" | "stainless_steel";
+  lab?: HeatScaleRiskResult;
+  target?: HeatScaleRiskResult;
   confidence: Confidence;
   driver: string;
 }
@@ -241,6 +344,7 @@ export interface PrimaryBottleneck {
 // --- Overall Assessment Result (Section 6) ---
 
 export interface AssessmentResults {
+  growth_oxygen: GrowthOxygenRiskResult;
   otr: OtrRiskResult;
   mixing: MixingRiskResult;
   shear: ShearRiskResult;

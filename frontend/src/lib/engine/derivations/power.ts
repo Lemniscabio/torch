@@ -10,6 +10,9 @@ import {
   VVM_VALID_HIGH,
   PV_SCENARIO_MULTIPLIERS,
 } from "@/lib/constants";
+import { gassedPower, ungassedPower } from "../correlations/gassed_power";
+import { deriveGasVelocity } from "./gas";
+import type { ReactorOperatingPoint } from "../correlations/types";
 
 export interface PowerResult {
   n_rps:      number; // rev/s
@@ -24,14 +27,30 @@ export function derivePowerInput(
   n_impellers: number,
   rpm: number,
   lab_geometry: VesselGeometry,
+  vvm: number,
 ): PowerResult {
   const impeller = IMPELLER_CONSTANTS[impeller_type];
   const n_rps = rpm / 60;
-  const d_imp = lab_geometry.d_imp;
+  const gas = deriveGasVelocity(vvm, lab_geometry.volume_m3 * 1000, lab_geometry.a_cross);
+  const op: ReactorOperatingPoint = {
+    D_T:          lab_geometry.t_diameter,
+    H_L:          lab_geometry.h_liquid,
+    V_L:          lab_geometry.volume_m3,
+    d_i:          lab_geometry.d_imp,
+    impeller_type,
+    Np:           impeller.np,
+    n_imp:        n_impellers,
+    N_rps:        n_rps,
+    Q_gas:        gas.q_gas,
+    v_s:          gas.vs,
+    rho_L:        RHO,
+    mu_L:         1.0e-3,
+    broth_type:   "coalescing",
+  };
 
-  const p_ungassed = impeller.np * RHO * n_rps ** 3 * d_imp ** 5;
-  const p_gassed   = impeller.pg_p_factor * p_ungassed;
-  const p_total    = n_impellers * p_gassed;
+  const p_ungassed = ungassedPower(op);
+  const p_total    = gassedPower(op);
+  const p_gassed   = n_impellers > 0 ? p_total / n_impellers : 0;
   const pv_lab     = p_total / lab_geometry.volume_m3;
 
   return { n_rps, p_ungassed, p_gassed, p_total, pv_lab };

@@ -4,6 +4,7 @@ import type {
   ProcessInputs,
   DerivedParameters,
   AssessmentFlag,
+  GrowthOxygenRiskResult,
   OtrRiskResult,
   MixingRiskResult,
   ShearRiskResult,
@@ -15,6 +16,8 @@ import type {
 } from "@/lib/types";
 
 import { runAllDerivations } from "./derivations/index";
+import { buildReactorScaleConfigs } from "./reactor_configs";
+import { calculateGrowthOxygenRisk } from "./oxygen/growth_oxygen_risk";
 import { calculateOtrRisk }   from "./oxygen/otr_risk";
 import { calculateMixingRisk } from "./mixing/mixing_risk";
 import { calculateShearRisk }  from "./shear/shear_risk";
@@ -46,6 +49,7 @@ export type {
 } from "./derivations/index";
 
 export { calculateOtrRisk }    from "./oxygen/otr_risk";
+export { calculateGrowthOxygenRisk, scoreMuRatio } from "./oxygen/growth_oxygen_risk";
 export { calculateMixingRisk } from "./mixing/mixing_risk";
 export { calculateShearRisk }  from "./shear/shear_risk";
 export { calculateCo2Risk }    from "./co2/co2_risk";
@@ -55,6 +59,12 @@ export {
   scaleUpByKla,
   scaleUpByShear,
 } from "./scaleup/criteria";
+export { buildReactorScaleConfigs } from "./reactor_configs";
+export type {
+  ReactorScaleConfig,
+  ReactorScaleConfigOptions,
+  ReactorScaleConfigs,
+} from "./reactor_configs";
 export type {
   ScaleupCriterion,
   ScaleupCriteriaInput,
@@ -64,6 +74,7 @@ export type {
 // --- Full assessment result ---
 
 export interface PartialAssessmentResult {
+  growth_oxygen:      GrowthOxygenRiskResult;
   otr:                OtrRiskResult;
   mixing:             MixingRiskResult;
   shear:              ShearRiskResult;
@@ -83,7 +94,7 @@ const SCORE_ORDER: Record<RiskScore, number> = {
 function domainRatio(domain: RiskDomain, result: PartialAssessmentResult): number {
   switch (domain) {
     case "otr":     return result.otr.kla_ratio > 0 ? 1 / result.otr.kla_ratio : Infinity;
-    case "mixing":  return result.mixing.da_max != null ? result.mixing.da_max : result.mixing.theta_mix_target / 30;
+    case "mixing":  return result.mixing.da_eff_target ?? result.mixing.da_eff ?? result.mixing.theta_mix_target / 30;
     case "shear":   return result.shear.tip_speed_ratio;
     case "co2":     return result.co2.pco2_bottom != null ? result.co2.pco2_bottom / 0.15 : 0;
     case "heat":    return result.heat.heat_ratio;
@@ -123,8 +134,8 @@ function generateBottleneckStatement(domain: RiskDomain, result: PartialAssessme
     case "otr":
       return `${label} is your critical constraint. Required kLa of ${result.otr.kla_required.toFixed(0)} h⁻¹ versus achievable ${result.otr.kla_target_moderate.toFixed(0)} h⁻¹ at constant P/V.`;
     case "mixing":
-      if (result.mixing.da_max != null) {
-        return `${label} is your critical constraint. Mixing time of ${result.mixing.theta_mix_target.toFixed(0)} s at target scale produces Da = ${result.mixing.da_max.toFixed(2)} — substrate gradients expected.`;
+      if (result.mixing.da_eff != null) {
+        return `${label} is your critical constraint. Mixing time of ${result.mixing.theta_mix_target.toFixed(0)} s at target scale produces Da_eff = ${result.mixing.da_eff.toFixed(2)} — mixing/uptake mismatch expected.`;
       }
       return `${label} is your critical constraint. Mixing time of ${result.mixing.theta_mix_target.toFixed(0)} s at target scale may compromise pH homogeneity.`;
     case "shear":
@@ -144,7 +155,7 @@ function generateWhatWouldChange(domain: RiskDomain, result: PartialAssessmentRe
       return `If your measured OUR is below ${(klaReqNeeded * result.derived.driving_force).toFixed(0)} mmol/L/h, OTR risk improves by one level.`;
     }
     case "mixing":
-      if (result.mixing.da_max != null && result.mixing.da_max > 0.01) {
+      if (result.mixing.da_eff != null && result.mixing.da_eff > 0.1) {
         return "Switching to continuous feed would reduce Da and may lower mixing risk.";
       }
       return "Increasing agitation or reducing target vessel H/D ratio would improve mixing time.";
@@ -163,22 +174,29 @@ function generateWhatWouldChange(domain: RiskDomain, result: PartialAssessmentRe
 export function runAssessment(inputs: ProcessInputs): PartialAssessmentResult {
   const { derived, flags } = runAllDerivations(inputs);
 
-  const otr     = calculateOtrRisk(inputs, derived);
+  const reactorConfigs = buildReactorScaleConfigs(inputs, {
+    method: inputs.scaleup_criterion ?? "power_per_volume",
+  });
+  const growthOxygen = calculateGrowthOxygenRisk(inputs, reactorConfigs);
+  flags.push(...growthOxygen.flags);
+
+  const otr     = calculateOtrRisk(inputs, derived, reactorConfigs);
   flags.push(...otr.flags);
 
-  const mixing  = calculateMixingRisk(inputs, derived);
+  const mixing  = calculateMixingRisk(inputs, derived, reactorConfigs);
   flags.push(...mixing.flags);
 
-  const shear   = calculateShearRisk(inputs, derived);
+  const shear   = calculateShearRisk(inputs, derived, reactorConfigs);
   flags.push(...shear.flags);
 
-  const co2     = calculateCo2Risk(inputs, derived);
+  const co2     = calculateCo2Risk(inputs, derived, reactorConfigs);
   flags.push(...co2.flags);
 
-  const heat    = calculateHeatRisk(inputs, derived);
+  const heat    = calculateHeatRisk(inputs, derived, reactorConfigs);
   flags.push(...heat.flags);
 
   const partialResult: PartialAssessmentResult = {
+    growth_oxygen:      growthOxygen.result,
     otr:                otr.result,
     mixing:             mixing.result,
     shear:              shear.result,

@@ -2,13 +2,14 @@
 //
 // Two complementary scores:
 //   ph_score  — θ_mix vs threshold (applies to batch and fed-batch)
-//   da_score  — kinetic Damköhler Da_max vs thresholds (gradient/overflow risk)
+//   da_score  — kinetic Damköhler Da_eff vs thresholds (gradient/overflow risk)
 //
 // Overall score = worst of the two.
 
 import type { ProcessInputs, DerivedParameters, MixingRiskResult, RiskScore, Confidence, AssessmentFlag } from "@/lib/types";
-import { RUSZKOWSKI_CONSTANT, RHO, PH_MIX_THRESHOLDS, DA_THRESHOLDS, KINETIC_PARAMS } from "@/lib/constants";
+import { RUSZKOWSKI_CONSTANT, RHO, PH_MIX_THRESHOLDS, KINETIC_PARAMS } from "@/lib/constants";
 import { deriveDamkohler } from "./uptake_damkohler";
+import type { ReactorScaleConfigs } from "../reactor_configs";
 
 function ruszkowskiMixingTime(t_diameter: number, d_imp: number, pv: number): number {
   const epsilon = pv / RHO;
@@ -19,10 +20,10 @@ function ruszkowskiMixingTime(t_diameter: number, d_imp: number, pv: number): nu
   );
 }
 
-function scoreDa(da: number): RiskScore {
-  if (da < DA_THRESHOLDS.low)      return "low";
-  if (da < DA_THRESHOLDS.moderate) return "moderate";
-  if (da < DA_THRESHOLDS.high)     return "high";
+function scoreDaEff(daEff: number): RiskScore {
+  if (daEff < 0.1)  return "low";
+  if (daEff < 1.0)  return "moderate";
+  if (daEff < 10.0) return "high";
   return "critical";
 }
 
@@ -32,17 +33,11 @@ function scorePhControl(theta_mix_target: number): RiskScore {
   return "high";
 }
 
-const SCORE_ORDER: Record<RiskScore, number> = { low: 0, moderate: 1, high: 2, critical: 3 };
-
-function worstScore(...scores: RiskScore[]): RiskScore {
-  return scores.reduce((a, b) => SCORE_ORDER[a] >= SCORE_ORDER[b] ? a : b);
-}
-
 function mixingConfidence(hasDa: boolean): { confidence: Confidence; driver: string } {
   if (hasDa) {
     return {
       confidence: "reliable",
-      driver: "Mixing risk from Ruszkowski correlation and kinetic Damköhler (μ_max-based, conservative).",
+      driver: "Mixing risk from Ruszkowski correlation and kinetic Damkohler (Da_eff primary, with lab/target comparison).",
     };
   }
   return {
@@ -54,17 +49,21 @@ function mixingConfidence(hasDa: boolean): { confidence: Confidence; driver: str
 export function calculateMixingRisk(
   inputs: ProcessInputs,
   derived: DerivedParameters,
+  reactorConfigs: ReactorScaleConfigs,
 ): { result: MixingRiskResult; flags: AssessmentFlag[] } {
   const flags: AssessmentFlag[] = [];
 
   const theta_mix_lab = ruszkowskiMixingTime(
-    derived.lab_geometry.t_diameter,
-    derived.lab_geometry.d_imp,
-    derived.pv_lab,
+    reactorConfigs.lab.geometry.t_diameter,
+    reactorConfigs.lab.geometry.d_imp,
+    reactorConfigs.lab.pv_w_m3,
   );
 
-  const theta_mix_target =
-    theta_mix_lab * Math.pow(inputs.v_target / inputs.v_lab, 1 / 3);
+  const theta_mix_target = ruszkowskiMixingTime(
+    reactorConfigs.target.geometry.t_diameter,
+    reactorConfigs.target.geometry.d_imp,
+    reactorConfigs.target.pv_w_m3,
+  );
 
   if (inputs.h_d_target > 1.5) {
     flags.push({
@@ -86,12 +85,25 @@ export function calculateMixingRisk(
   // Kinetic Damköhler — requires biomass and organism kinetics
   let da_max: number | undefined;
   let da_eff: number | undefined;
+  let da_eff_lab: number | undefined;
+  let da_eff_target: number | undefined;
   let mu_eff: number | undefined;
   let da_score: RiskScore | undefined;
+  let da_score_lab: RiskScore | undefined;
+  let da_score_target: RiskScore | undefined;
 
   if (derived.biomass_cdw > 0 && derived.our_peak > 0) {
     const kp = KINETIC_PARAMS[inputs.organism_species];
-    const dam = deriveDamkohler({
+    const damLab = deriveDamkohler({
+      theta_mix_s:  theta_mix_lab,
+      mu_max:       kp.mu_max,
+      K_s:          kp.Ks,
+      yield_x_s:    kp.Y_X_S,
+      yield_o2:     kp.Y_O2,
+      biomass_cdw:  derived.biomass_cdw,
+      our_peak:     derived.our_peak,
+    });
+    const damTarget = deriveDamkohler({
       theta_mix_s:  theta_mix_target,
       mu_max:       kp.mu_max,
       K_s:          kp.Ks,
@@ -100,33 +112,43 @@ export function calculateMixingRisk(
       biomass_cdw:  derived.biomass_cdw,
       our_peak:     derived.our_peak,
     });
-    da_max   = dam.da_max;
-    da_eff   = dam.da_eff;
-    mu_eff   = dam.mu_eff;
-    da_score = scoreDa(da_max);
+    da_max   = damTarget.da_max;
+    da_eff   = damTarget.da_eff;
+    da_eff_lab = damLab.da_eff;
+    da_eff_target = damTarget.da_eff;
+    mu_eff   = damTarget.mu_eff;
+    da_score_lab = scoreDaEff(damLab.da_eff);
+    da_score_target = scoreDaEff(damTarget.da_eff);
+    da_score = da_score_target;
 
-    if (da_max >= DA_THRESHOLDS.high) {
+    if (damTarget.da_eff >= 10) {
       flags.push({
         domain: "mixing",
-        message: `Kinetic Damköhler Da = ${da_max.toFixed(1)} — substrate gradients expected at target scale. Risk of overflow metabolism (acetate/ethanol). Da_eff = ${da_eff.toFixed(2)} (informational).`,
+        message: `Da_eff at target is ${damTarget.da_eff.toFixed(2)} — strong mixing/uptake mismatch expected.`,
       });
     }
   }
 
-  const score = da_score
-    ? worstScore(ph_score, da_score)
-    : ph_score;
+  const score = da_score ?? ph_score;
+  const score_lab = da_score_lab ?? ph_score;
+  const score_target = da_score_target ?? ph_score;
 
   const { confidence, driver } = mixingConfidence(da_score !== undefined);
 
   return {
     result: {
       score,
+      score_lab,
+      score_target,
       theta_mix_lab,
       theta_mix_target,
       da_max,
       da_eff,
+      da_eff_lab,
+      da_eff_target,
       da_score,
+      da_score_lab,
+      da_score_target,
       mu_eff,
       ph_score,
       confidence,

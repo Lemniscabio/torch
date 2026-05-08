@@ -1,6 +1,14 @@
 // R4 — CO₂ Accumulation Risk.
 
-import type { ProcessInputs, DerivedParameters, Co2RiskResult, RiskScore, Confidence, AssessmentFlag } from "@/lib/types";
+import type {
+  ProcessInputs,
+  DerivedParameters,
+  Co2RiskResult,
+  Co2ScaleRiskResult,
+  RiskScore,
+  Confidence,
+  AssessmentFlag,
+} from "@/lib/types";
 import {
   RQ_DEFAULTS,
   KLA_CO2_O2_RATIO,
@@ -12,9 +20,8 @@ import {
   CO2_OUR_THRESHOLD,
   CO2_THRESHOLDS,
   PCO2_CRITICAL,
-  PV_SCENARIO_MULTIPLIERS,
 } from "@/lib/constants";
-import { buildOperatingPoint, computeKlaEnsemble } from "../oxygen/kla_achievable";
+import type { ReactorScaleConfig, ReactorScaleConfigs } from "../reactor_configs";
 
 // Y_in for ambient air (mole fraction CO₂ ≈ 400 ppm).
 const Y_CO2_IN  = 4e-4;
@@ -51,6 +58,7 @@ function logMean(a: number, b: number): number {
 export function calculateCo2Risk(
   inputs: ProcessInputs,
   derived: DerivedParameters,
+  reactorConfigs: ReactorScaleConfigs,
 ): { result: Co2RiskResult; flags: AssessmentFlag[] } {
   const flags: AssessmentFlag[] = [];
   const { confidence, driver } = co2Confidence(inputs.our_mode);
@@ -62,69 +70,109 @@ export function calculateCo2Risk(
   const pco2_critical = PCO2_CRITICAL[inputs.organism_species];
 
   if (!activated) {
-    return { result: { score: "low", activated: false, pco2_critical, confidence, driver }, flags };
+    return {
+      result: {
+        score: "low",
+        margin_score: "low",
+        activated: false,
+        pco2_critical,
+        lab: {
+          cer: 0,
+          kla_co2: 0,
+          y_co2_out: Y_CO2_IN,
+          pco2_gas_avg: 0,
+          pco2_bulk: 0,
+          pco2_bottom: 0,
+          dp_hydro: 0,
+          pco2_margin: Infinity,
+          margin_score: "low",
+          score: "low",
+        },
+        target: {
+          cer: 0,
+          kla_co2: 0,
+          y_co2_out: Y_CO2_IN,
+          pco2_gas_avg: 0,
+          pco2_bulk: 0,
+          pco2_bottom: 0,
+          dp_hydro: 0,
+          pco2_margin: Infinity,
+          margin_score: "low",
+          score: "low",
+        },
+        confidence,
+        driver,
+      },
+      flags,
+    };
   }
 
-  const rq  = resolveRq(inputs);
-  const cer = rq * derived.our_peak; // mmol CO₂ / L / h
-
-  // kLa_O2 at target, moderate P/V
-  const V_target    = derived.target_geometry.volume_m3;
-  const Pg_moderate = PV_SCENARIO_MULTIPLIERS.moderate * derived.pv_lab * V_target;
-
-  const opTarget = buildOperatingPoint({
-    D_T: derived.target_geometry.t_diameter,
-    H_L: derived.target_geometry.h_liquid,
-    V_L: V_target,
-    d_i: derived.target_geometry.d_imp,
-    impeller_type: inputs.impeller_type,
-    n_imp: inputs.n_impellers,
-    N_rps: derived.n_rps,
-    Q_gas: derived.q_gas_target,
-    v_s:   derived.vs_target,
-    mu_L:  derived.mu,
-  });
-
-  const { mean: kla_o2_target } = computeKlaEnsemble(opTarget, Pg_moderate, derived.biomass_cdw);
-  const kla_co2 = KLA_CO2_O2_RATIO * kla_o2_target;
-
-  // --- Gas-phase CO₂ mass balance ---
-  // q_gas_target is m³/s; convert to NL/h for molar flow (STP: 1 mol = 22.4 L).
-  const v_liquid_l    = derived.target_geometry.volume_m3 * 1000;
-  const q_gas_nl_h    = derived.q_gas_target * 1e3 * 3600;          // NL/h
-  const n_dot_gas_mol = q_gas_nl_h / MOLAR_VOL;                     // mol/h
-  const cer_mol_h     = (cer / 1000) * v_liquid_l;                  // mol CO₂/h from broth
-  const y_co2_out     = Math.min(Y_CO2_IN + cer_mol_h / n_dot_gas_mol, 0.20); // cap at 20%
-
-  // Log-mean gas-phase pCO₂ across vessel height (bar).
-  const p_total_bar   = (ATMOSPHERIC_PRESSURE_PA + RHO * G * derived.target_geometry.h_liquid / 2) / 1e5;
-  const pco2_gas_in   = Y_CO2_IN  * 1.01325;  // bar (inlet ≈ air)
-  const pco2_gas_out  = y_co2_out * p_total_bar;
-  const pco2_gas_avg  = logMean(pco2_gas_out, pco2_gas_in);
-
-  // Dissolved CO₂ = gas-phase equilibrium + transfer driving force contribution.
-  // Steady-state: kLa·(C_L − C*) = CER  →  C_L − C* = CER/kLa
-  // C* ≈ pco2_gas_avg / H_CO2 (Henry's law; H_CO2 in mmol/L/atm, pco2_gas_avg in bar ≈ atm)
-  const pco2_gas_avg_atm = pco2_gas_avg / 1.01325;
-  const pco2_bulk_atm    = pco2_gas_avg_atm + (cer / 1000) / (kla_co2 * H_CO2);
-  const pco2_bulk        = pco2_bulk_atm * 1.01325;
-
-  // Hydrostatic correction: pCO₂ at sparger reflects higher local pressure.
-  const dp_hydro    = RHO * G * derived.target_geometry.h_liquid;
-  const pco2_bottom = pco2_bulk * (ATMOSPHERIC_PRESSURE_PA + dp_hydro) / ATMOSPHERIC_PRESSURE_PA;
-
-  const pco2_margin = pco2_critical / pco2_bottom;
-  const score       = scorePco2Margin(pco2_margin);
+  const rq = resolveRq(inputs);
+  const lab = calculateScaleCo2(reactorConfigs.lab, derived.our_peak, rq, pco2_critical);
+  const target = calculateScaleCo2(reactorConfigs.target, derived.our_peak, rq, pco2_critical);
+  const margin_score = scorePco2Margin(target.pco2_margin);
+  const score = margin_score;
 
   return {
     result: {
-      score, activated: true,
-      cer, kla_co2,
-      y_co2_out, pco2_gas_avg,
-      pco2_bulk, pco2_bottom, dp_hydro,
-      pco2_critical, pco2_margin,
+      score,
+      margin_score,
+      activated: true,
+      cer: target.cer,
+      kla_co2: target.kla_co2,
+      y_co2_out: target.y_co2_out,
+      pco2_gas_avg: target.pco2_gas_avg,
+      pco2_bulk: target.pco2_bulk,
+      pco2_bottom: target.pco2_bottom,
+      dp_hydro: target.dp_hydro,
+      pco2_critical,
+      pco2_margin: target.pco2_margin,
+      lab,
+      target,
       confidence, driver,
     },
     flags,
+  };
+}
+
+function calculateScaleCo2(
+  scale: ReactorScaleConfig,
+  our_peak: number,
+  rq: number,
+  pco2_critical: number,
+): Co2ScaleRiskResult {
+  const cer = rq * our_peak; // mmol CO2 / L / h
+  const kla_co2 = KLA_CO2_O2_RATIO * scale.kla_h;
+  const v_liquid_l = scale.geometry.volume_m3 * 1000;
+  const q_gas_nl_h = scale.gas.q_gas * 1e3 * 3600; // NL/h
+  const n_dot_gas_mol = q_gas_nl_h / MOLAR_VOL;
+  const cer_mol_h = (cer / 1000) * v_liquid_l;
+  const y_co2_out = Math.min(Y_CO2_IN + cer_mol_h / n_dot_gas_mol, 0.20);
+
+  const p_total_bar = (ATMOSPHERIC_PRESSURE_PA + RHO * G * scale.geometry.h_liquid / 2) / 1e5;
+  const pco2_gas_in = Y_CO2_IN * 1.01325;
+  const pco2_gas_out = y_co2_out * p_total_bar;
+  const pco2_gas_avg = logMean(pco2_gas_out, pco2_gas_in);
+
+  const pco2_gas_avg_atm = pco2_gas_avg / 1.01325;
+  const pco2_bulk_atm = pco2_gas_avg_atm + (cer / 1000) / (kla_co2 * H_CO2);
+  const pco2_bulk = pco2_bulk_atm * 1.01325;
+  const dp_hydro = RHO * G * scale.geometry.h_liquid;
+  const pco2_bottom = pco2_bulk * (ATMOSPHERIC_PRESSURE_PA + dp_hydro) / ATMOSPHERIC_PRESSURE_PA;
+  const pco2_margin = pco2_critical / pco2_bottom;
+  const margin_score = scorePco2Margin(pco2_margin);
+  const score = margin_score;
+
+  return {
+    cer,
+    kla_co2,
+    y_co2_out,
+    pco2_gas_avg,
+    pco2_bulk,
+    pco2_bottom,
+    dp_hydro,
+    pco2_margin,
+    margin_score,
+    score,
   };
 }

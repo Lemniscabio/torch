@@ -2,13 +2,7 @@
 
 import type { ProcessInputs, DerivedParameters, ShearRiskResult, RiskScore, Confidence, AssessmentFlag } from "@/lib/types";
 import { TIP_SPEED_THRESHOLDS, SHEAR_THRESHOLDS } from "@/lib/constants";
-
-function scoreTipSpeedRatio(ratio: number): RiskScore {
-  if (ratio < SHEAR_THRESHOLDS.low)      return "low";
-  if (ratio < SHEAR_THRESHOLDS.moderate) return "moderate";
-  if (ratio < SHEAR_THRESHOLDS.high)     return "high";
-  return "critical";
-}
+import type { ReactorScaleConfigs } from "../reactor_configs";
 
 // Margin = threshold/actual = 1/ratio. Boundaries are reciprocals of SHEAR_THRESHOLDS.
 function scoreTipSpeedMargin(margin: number): RiskScore {
@@ -21,25 +15,48 @@ function scoreTipSpeedMargin(margin: number): RiskScore {
 export function calculateShearRisk(
   inputs: ProcessInputs,
   derived: DerivedParameters,
+  reactorConfigs: ReactorScaleConfigs,
 ): { result: ShearRiskResult; flags: AssessmentFlag[] } {
-  const d_imp_lab    = derived.lab_geometry.d_imp;
-  const d_imp_target = derived.target_geometry.d_imp;
-
-  // Constant P/V scale-up: N_target = N_lab × (D_lab / D_target)^(5/3)
-  const n_target  = derived.n_rps * Math.pow(d_imp_lab / d_imp_target, 5 / 3);
-  const tip_speed = Math.PI * n_target * d_imp_target;
+  const n_lab = reactorConfigs.lab.rpm / 60;
+  const n_target = reactorConfigs.target.rpm / 60;
+  const tip_speed_lab = reactorConfigs.lab.tip_speed_m_s;
+  const tip_speed = reactorConfigs.target.tip_speed_m_s;
 
   const tip_speed_threshold = TIP_SPEED_THRESHOLDS[inputs.organism_species];
+  const tip_speed_ratio_lab = tip_speed_lab / tip_speed_threshold;
+  const tip_speed_margin_lab = tip_speed_threshold / tip_speed_lab;
   const tip_speed_ratio     = tip_speed / tip_speed_threshold;
   const tip_speed_margin    = tip_speed_threshold / tip_speed;
-  const score               = scoreTipSpeedRatio(tip_speed_ratio);
-  const margin_score        = scoreTipSpeedMargin(tip_speed_margin);
+  const margin_score_lab    = scoreTipSpeedMargin(tip_speed_margin_lab);
+  const margin_score_target = scoreTipSpeedMargin(tip_speed_margin);
+  const margin_score        = margin_score_target;
+  const score_lab           = margin_score_lab;
+  const score_target        = margin_score_target;
+  const score               = score_target;
 
   const confidence: Confidence = "reliable";
   const driver = "Shear risk depends on geometry and agitation; independent of OUR estimation.";
 
   return {
-    result: { score, n_target, tip_speed, tip_speed_threshold, tip_speed_ratio, tip_speed_margin, margin_score, confidence, driver },
+    result: {
+      score,
+      score_lab,
+      score_target,
+      n_lab,
+      n_target,
+      tip_speed_lab,
+      tip_speed,
+      tip_speed_threshold,
+      tip_speed_ratio_lab,
+      tip_speed_margin_lab,
+      tip_speed_ratio,
+      tip_speed_margin,
+      margin_score,
+      margin_score_lab,
+      margin_score_target,
+      confidence,
+      driver,
+    },
     flags: [],
   };
 }

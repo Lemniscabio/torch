@@ -8,11 +8,13 @@ import type {
   OrganismSpecies,
   ProcessType,
   RiskScore,
+  BiomassDensityCategory,
+  ScaleupCriterion,
 
 } from "@/lib/types";
 import { runAssessment } from "@/lib/engine";
 import type { PartialAssessmentResult } from "@/lib/engine";
-import { INPUT_DEFAULTS } from "@/lib/constants";
+import { INPUT_DEFAULTS, getRepresentativeBiomassCdw } from "@/lib/constants";
 
 // Mirrors FormState from InputForm — kept in sync manually
 export interface PreviewFormState {
@@ -25,19 +27,26 @@ export interface PreviewFormState {
   fed_batch_time_h?: string;
   v_lab: string;
   v_target: string;
+  scaleup_criterion?: ScaleupCriterion;
   h_d_lab: string;
   h_d_target: string;
+  h_d_target_same_as_lab?: boolean;
   dt_ratio_lab?: string;
   dt_ratio_target?: string;
+  dt_ratio_target_same_as_lab?: boolean;
   n_impellers: string;
+  n_impellers_target?: string;
+  n_impellers_target_same_as_lab?: boolean;
   impeller_type: string;
   rpm: string;
   vvm: string;
   biomass: string;
   biomass_unit: string;
+  biomass_density_category?: BiomassDensityCategory | "";
   our_mode: string;
   our_measured: string;
   do_setpoint: string;
+  o2_inlet?: string;
   temperature: string;
   t_cw_inlet: string;
   cooling_water_flowrate?: string;
@@ -94,8 +103,10 @@ function getRiskGlow(score: RiskScore): string {
 
 function getDomainKeyNumber(key: string, results: PartialAssessmentResult): string {
   switch (key) {
-    case "otr": return `kLa ratio: ${results.otr.kla_ratio.toFixed(2)}`;
-    case "mixing": return `\u03B8_mix: ${results.mixing.theta_mix_target.toFixed(0)}s`;
+    case "otr": return `OTR/OUR: ${results.otr.kla_ratio.toFixed(2)}`;
+    case "mixing": return results.mixing.da_eff != null
+      ? `Da_eff: ${results.mixing.da_eff.toFixed(2)}`
+      : `\u03B8_mix: ${results.mixing.theta_mix_target.toFixed(0)}s`;
     case "shear": return `Tip: ${results.shear.tip_speed.toFixed(1)} m/s`;
     case "co2": return results.co2.activated && results.co2.pco2_bottom
       ? `pCO\u2082: ${results.co2.pco2_bottom.toFixed(3)} bar`
@@ -127,7 +138,7 @@ export default function LivePreview({ formState }: LivePreviewProps) {
     if (formState.v_lab && parseFloat(formState.v_lab) > 0) filled++;
     if (formState.v_target && parseFloat(formState.v_target) > 0) filled++;
     if (formState.rpm && parseFloat(formState.rpm) > 0) filled++;
-    if (formState.biomass && parseFloat(formState.biomass) > 0) filled++;
+    if (formState.biomass_density_category) filled++;
     if (formState.temperature && parseFloat(formState.temperature) > 0) filled++;
     return { filled, total, percentage: Math.round((filled / total) * 100) };
   }, [formState]);
@@ -136,13 +147,13 @@ export default function LivePreview({ formState }: LivePreviewProps) {
   const liveResults = useMemo<PartialAssessmentResult | null>(() => {
     if (!formState) return null;
 
-    // Minimum required: organism_class, organism_species, v_lab, v_target, rpm, biomass, temperature
+    // Minimum required: organism_class, organism_species, v_lab, v_target, rpm, biomass category, temperature
     const oc = formState.organism_class;
     const os = formState.organism_species;
     const vLab = parseFloat(formState.v_lab);
     const vTarget = parseFloat(formState.v_target);
     const rpm = parseFloat(formState.rpm);
-    const biomass = parseFloat(formState.biomass);
+    const biomassDensityCategory = formState.biomass_density_category as BiomassDensityCategory | "";
     const temp = parseFloat(formState.temperature);
 
     if (
@@ -150,11 +161,12 @@ export default function LivePreview({ formState }: LivePreviewProps) {
       isNaN(vLab) || vLab <= 0 ||
       isNaN(vTarget) || vTarget <= vLab ||
       isNaN(rpm) || rpm <= 0 ||
-      isNaN(biomass) || biomass <= 0 ||
+      !biomassDensityCategory ||
       isNaN(temp) || temp <= 0
     ) {
       return null;
     }
+    const biomass = getRepresentativeBiomassCdw(biomassDensityCategory);
 
     try {
       const inputs: ProcessInputs = {
@@ -163,21 +175,25 @@ export default function LivePreview({ formState }: LivePreviewProps) {
         process_type: (formState.process_type || "batch") as ProcessInputs["process_type"],
         v_lab: vLab,
         v_target: vTarget,
+        scaleup_criterion: (formState.scaleup_criterion || "power_per_volume") as ProcessInputs["scaleup_criterion"],
         h_d_lab: parseFloat(formState.h_d_lab) || INPUT_DEFAULTS.h_d_lab,
         h_d_target: parseFloat(formState.h_d_target) || 1.0,
         dt_ratio_lab: formState.dt_ratio_lab ? parseFloat(formState.dt_ratio_lab) : undefined,
         dt_ratio_target: formState.dt_ratio_target ? parseFloat(formState.dt_ratio_target) : undefined,
         n_impellers: parseInt(formState.n_impellers) || 1,
+        n_impellers_target: formState.n_impellers_target ? parseInt(formState.n_impellers_target) : (parseInt(formState.n_impellers) || 1),
         impeller_type: (formState.impeller_type || "rushton") as ProcessInputs["impeller_type"],
         rpm,
         vvm: parseFloat(formState.vvm) || INPUT_DEFAULTS.vvm,
         biomass,
-        biomass_unit: (formState.biomass_unit || "g_L_CDW") as ProcessInputs["biomass_unit"],
+        biomass_unit: "g_L_CDW",
+        biomass_density_category: biomassDensityCategory,
         our_mode: (formState.our_mode || "estimate") as ProcessInputs["our_mode"],
         our_measured: formState.our_mode === "measured" && formState.our_measured
           ? parseFloat(formState.our_measured)
           : undefined,
         do_setpoint: parseFloat(formState.do_setpoint) || INPUT_DEFAULTS.do_setpoint,
+        o2_inlet: formState.o2_inlet ? parseFloat(formState.o2_inlet) : INPUT_DEFAULTS.o2_inlet,
         temperature: temp,
         t_cw_inlet: parseFloat(formState.t_cw_inlet) || INPUT_DEFAULTS.t_cw_inlet,
         cooling_water_flowrate_lpm: formState.cooling_water_flowrate
@@ -226,7 +242,7 @@ export default function LivePreview({ formState }: LivePreviewProps) {
         </div>
         <BioreactorDiagram
           hd={parseFloat(formState?.h_d_target || "") || 2.0}
-          nImpellers={formState?.n_impellers ? parseInt(formState.n_impellers) || 1 : 1}
+          nImpellers={formState?.n_impellers_target ? parseInt(formState.n_impellers_target) || 1 : (formState?.n_impellers ? parseInt(formState.n_impellers) || 1 : 1)}
           impellerType={formState?.impeller_type || "rushton"}
           volume={formState?.v_target ? parseFloat(formState.v_target) || undefined : undefined}
           width={200}

@@ -11,7 +11,12 @@
 //   Values marked [~] are estimated from analogous organisms or textbook
 //   ranges where no direct primary-literature measurement was located.
 
-import type { OrganismSpecies } from "@/lib/types";
+import type { BiomassDensityCategory, OrganismSpecies } from "@/lib/types";
+
+export interface OurPeakBounds {
+  lower: number; // mmol/L/h
+  upper: number; // mmol/L/h
+}
 
 export interface KineticParameters {
   mu_max: number;  // h⁻¹
@@ -19,6 +24,60 @@ export interface KineticParameters {
   Ko:     number;  // mmol O₂/L
   Y_X_S:  number;  // g CDW / g substrate
   Y_O2:   number;  // g CDW / g O₂
+}
+
+export const PEAK_BIOMASS_HIGH_DENSITY_THRESHOLD_G_L = 60;
+
+export const BIOMASS_DENSITY_REPRESENTATIVE_CDW: Record<BiomassDensityCategory, number> = {
+  low_density: 20,
+  high_density: 100,
+} as const;
+
+export const OUR_PEAK_BOUNDS: Partial<Record<OrganismSpecies, OurPeakBounds>> = {
+  e_coli:       { lower: 100, upper: 350 },
+  p_pastoris:   { lower: 100, upper: 250 },
+  s_cerevisiae: { lower: 50,  upper: 150 },
+  b_subtilis:   { lower: 40,  upper: 180 },
+} as const;
+
+export function getBiomassDensityCategory(
+  biomass_cdw_g_L: number,
+): BiomassDensityCategory {
+  return biomass_cdw_g_L >= PEAK_BIOMASS_HIGH_DENSITY_THRESHOLD_G_L
+    ? "high_density"
+    : "low_density";
+}
+
+export function getOurPeakBounds(
+  organism: OrganismSpecies,
+): OurPeakBounds | undefined {
+  return OUR_PEAK_BOUNDS[organism];
+}
+
+export function getRepresentativeOurPeakByDensity(
+  organism: OrganismSpecies,
+  biomass_cdw_g_L: number,
+): number | undefined {
+  const bounds = getOurPeakBounds(organism);
+  if (!bounds) return undefined;
+  return getBiomassDensityCategory(biomass_cdw_g_L) === "high_density"
+    ? bounds.upper
+    : bounds.lower;
+}
+
+export function getRepresentativeBiomassCdw(
+  category: BiomassDensityCategory,
+): number {
+  return BIOMASS_DENSITY_REPRESENTATIVE_CDW[category];
+}
+
+export function getOurPeakByCategory(
+  organism: OrganismSpecies,
+  category: BiomassDensityCategory,
+): number | undefined {
+  const bounds = getOurPeakBounds(organism);
+  if (!bounds) return undefined;
+  return category === "high_density" ? bounds.upper : bounds.lower;
 }
 
 export const KINETIC_PARAMS: Record<OrganismSpecies, KineticParameters> = {

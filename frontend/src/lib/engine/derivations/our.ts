@@ -1,7 +1,7 @@
 // D1 — OUR derivation. exhaust_gas mode removed (Stage 3).
 
-import type { OrganismSpecies } from "@/lib/types";
-import { QO2_RANGES } from "@/lib/constants";
+import type { BiomassDensityCategory, OrganismSpecies } from "@/lib/types";
+import { getBiomassDensityCategory, getOurPeakBounds } from "@/lib/constants";
 
 export interface OurResult {
   our_peak: number;
@@ -14,16 +14,22 @@ export function deriveOur(
   our_measured: number | undefined,
   biomass_cdw: number,
   organism_species: OrganismSpecies,
+  biomass_density_category?: BiomassDensityCategory,
 ): OurResult {
   if (our_mode === "measured") {
     return { our_peak: our_measured! };
   }
 
   // estimate mode
-  const qo2 = QO2_RANGES[organism_species];
+  const bounds = getOurPeakBounds(organism_species);
+  if (!bounds) {
+    throw new Error(`OUR estimate is unavailable for organism "${organism_species}". Provide measured OUR.`);
+  }
+  const category = biomass_density_category ?? getBiomassDensityCategory(biomass_cdw);
+  const our_peak = category === "high_density" ? bounds.upper : bounds.lower;
   return {
-    our_peak: qo2.qo2_midpoint * biomass_cdw,
-    our_min:  qo2.qo2_min      * biomass_cdw,
-    our_max:  qo2.qo2_max      * biomass_cdw,
+    our_peak,
+    our_min: bounds.lower,
+    our_max: bounds.upper,
   };
 }

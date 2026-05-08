@@ -10,6 +10,19 @@ export const OTR_THRESHOLDS = {
   // below 0.7 → critical
 } as const;
 
+// --- Growth oxygen capacity: μ_O2 / μ_substrate ---
+//
+// Capacity margin for oxygen-supported growth relative to substrate-implied
+// growth. Uses the same margin bands as OTR kLa ratio: below 1 means oxygen
+// cannot support the substrate-driven growth rate.
+
+export const MU_RATIO_THRESHOLDS = {
+  low:      1.5, // ratio >= 1.5     → low
+  moderate: 1.0, // ratio 1.0–1.5    → moderate
+  high:     0.7, // ratio 0.7–1.0    → high
+  // below 0.7 → critical
+} as const;
+
 // --- Mixing: Damköhler number ---
 
 export const DA_THRESHOLDS = {

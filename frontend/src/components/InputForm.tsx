@@ -9,16 +9,20 @@ import type {
   ProcessInputs,
   ImpellerType,
   BiomassUnit,
+  BiomassDensityCategory,
+  ScaleupCriterion,
   OurMode,
   Confidence,
 } from "@/lib/types";
 import {
-  QO2_RANGES,
-  CDW_OD_FACTORS,
   INPUT_DEFAULTS,
   IMPELLER_CONSTANTS,
   BATCH_DEFAULTS,
   FED_BATCH_DEFAULTS,
+  BIOMASS_DENSITY_REPRESENTATIVE_CDW,
+  getOurPeakBounds,
+  getOurPeakByCategory,
+  getRepresentativeBiomassCdw,
   NON_NEWTONIAN_BIOMASS_THRESHOLD,
 } from "@/lib/constants";
 import { runAssessment } from "@/lib/engine";
@@ -47,7 +51,47 @@ const IMPELLER_OPTIONS: { value: ImpellerType; label: string; icon: string; desc
 ];
 
 const HD_PRESETS = [1.0, 1.2, 1.5, 2.0, 2.5, 3.0];
+const DT_PRESETS = [0.2, 0.4, 0.6];
 const SCALE_MULTIPLIERS = [10, 100, 1000] as const;
+const SCALEUP_CRITERION_OPTIONS: {
+  value: ScaleupCriterion;
+  label: "P/V" | "kLa" | "Tip speed";
+  description: "Power per volume" | "mass transfer coefficient" | "shear";
+}[] = [
+  { value: "power_per_volume", label: "P/V", description: "Power per volume" },
+  { value: "kla", label: "kLa", description: "mass transfer coefficient" },
+  { value: "shear", label: "Tip speed", description: "shear" },
+];
+
+const OXYGEN_INLET_OPTIONS = [
+  { value: 20.9, key: "air", label: "Air", percentage: "21%" },
+  { value: 40, key: "mild_enriched", label: "Mildly enriched air", percentage: "40%" },
+  { value: 60, key: "high_enriched", label: "Highly enriched air", percentage: "60%" },
+  { value: 100, key: "pure_oxygen", label: "Pure oxygen", percentage: "100%" },
+] as const;
+
+const BIOMASS_DENSITY_OPTIONS: {
+  value: BiomassDensityCategory;
+  label: string;
+  range: string;
+  assumption: string;
+  description: string;
+}[] = [
+  {
+    value: "low_density",
+    label: "Low density",
+    range: "<60 g/L CDW",
+    assumption: "Newtonian",
+    description: "Uses 20 g/L CDW as the representative peak biomass.",
+  },
+  {
+    value: "high_density",
+    label: "High density",
+    range: "\u226560 g/L CDW",
+    assumption: "Non-Newtonian",
+    description: "Uses 100 g/L CDW as the representative peak biomass.",
+  },
+];
 
 // --- Form state ---
 
@@ -66,14 +110,19 @@ export interface FormState {
   // Step B
   v_lab: string;
   v_target: string;
+  scaleup_criterion: ScaleupCriterion;
 
   // Step C (lab-scale)
   vessel_model: string;
   h_d_lab: string;
   h_d_target: string;
+  h_d_target_same_as_lab: boolean;
   dt_ratio_lab: string;
   dt_ratio_target: string;
+  dt_ratio_target_same_as_lab: boolean;
   n_impellers: string;
+  n_impellers_target: string;
+  n_impellers_target_same_as_lab: boolean;
   n_impellers_overridden: boolean;
   impeller_type: ImpellerType;
   rpm: string;
@@ -82,10 +131,12 @@ export interface FormState {
   // Step D — Oxygen
   biomass: string;
   biomass_unit: BiomassUnit;
+  biomass_density_category: BiomassDensityCategory | "";
   our_mode: OurMode;
   our_measured: string;
   our_estimate_override: string;
   do_setpoint: string;
+  o2_inlet: string;
   // Step D — Thermal
   temperature: string;
   t_cw_inlet: string;
@@ -102,22 +153,29 @@ const INITIAL_STATE: FormState = {
   fed_batch_time_h: String(FED_BATCH_DEFAULTS.batch_time_h),
   v_lab: "",
   v_target: "",
+  scaleup_criterion: "power_per_volume",
   vessel_model: "",
   h_d_lab: String(INPUT_DEFAULTS.h_d_lab),
   h_d_target: "",
-  dt_ratio_lab: String(IMPELLER_CONSTANTS[INPUT_DEFAULTS.impeller_type].d_t_ratio),
-  dt_ratio_target: String(IMPELLER_CONSTANTS[INPUT_DEFAULTS.impeller_type].d_t_ratio),
-  n_impellers: "",
+  h_d_target_same_as_lab: false,
+  dt_ratio_lab: IMPELLER_CONSTANTS[INPUT_DEFAULTS.impeller_type].d_t_ratio.toFixed(1),
+  dt_ratio_target: IMPELLER_CONSTANTS[INPUT_DEFAULTS.impeller_type].d_t_ratio.toFixed(1),
+  dt_ratio_target_same_as_lab: true,
+  n_impellers: String(inferImpellers(INPUT_DEFAULTS.h_d_lab)),
+  n_impellers_target: String(inferImpellers(INPUT_DEFAULTS.h_d_lab)),
+  n_impellers_target_same_as_lab: true,
   n_impellers_overridden: false,
   impeller_type: INPUT_DEFAULTS.impeller_type,
   rpm: "",
   vvm: String(INPUT_DEFAULTS.vvm),
   biomass: "",
   biomass_unit: INPUT_DEFAULTS.biomass_unit,
+  biomass_density_category: "",
   our_mode: INPUT_DEFAULTS.our_mode,
   our_measured: "",
   our_estimate_override: "",
   do_setpoint: String(INPUT_DEFAULTS.do_setpoint),
+  o2_inlet: String(INPUT_DEFAULTS.o2_inlet),
   temperature: "",
   t_cw_inlet: String(INPUT_DEFAULTS.t_cw_inlet),
   cooling_water_flowrate: String(INPUT_DEFAULTS.cooling_water_flowrate_lpm),
@@ -165,15 +223,17 @@ function inferHdFromVolume(volumeL: number): number {
   return 1.2;
 }
 
-function getBiomassCdw(biomass: number, unit: BiomassUnit, species: OrganismSpecies | ""): number {
-  if (unit === "g_L_CDW") return biomass;
-  const factor = species ? CDW_OD_FACTORS[species as OrganismSpecies] : 0.38;
-  return biomass * factor;
-}
-
 function speciesDisplayName(species: OrganismSpecies | ""): string {
   const all = [...BACTERIA_SPECIES, ...YEAST_SPECIES];
   return all.find((s) => s.value === species)?.label ?? "organism";
+}
+
+function densityCategoryLabel(category: BiomassDensityCategory): string {
+  return BIOMASS_DENSITY_OPTIONS.find((option) => option.value === category)?.label ?? category;
+}
+
+function canEstimateOur(species: OrganismSpecies | ""): boolean {
+  return species ? getOurPeakBounds(species as OrganismSpecies) !== undefined : true;
 }
 
 const ORGANISM_INFO: Record<string, { traits: string }> = {
@@ -308,26 +368,49 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
           next.organism_species = "";
         }
 
+        if (key === "organism_species" && !canEstimateOur(value as OrganismSpecies | "")) {
+          next.our_mode = "measured";
+        }
+
         if (key === "v_target") {
           const vol = parseFloat(value as string);
-          if (!isNaN(vol) && vol > 0) {
+          if (!isNaN(vol) && vol > 0 && !prev.h_d_target_same_as_lab) {
             const inferredHd = inferHdFromVolume(vol);
             next.h_d_target = String(inferredHd);
-            if (!prev.n_impellers_overridden)
-              next.n_impellers = String(inferImpellers(inferredHd));
           }
         }
 
-        if (key === "h_d_target" && !prev.n_impellers_overridden) {
+        if (key === "h_d_lab" && !prev.n_impellers_overridden) {
           const hd = parseFloat(value as string);
           if (!isNaN(hd) && hd > 0)
             next.n_impellers = String(inferImpellers(hd));
         }
 
         if (key === "impeller_type") {
-          const ratio = IMPELLER_CONSTANTS[value as ImpellerType].d_t_ratio;
-          next.dt_ratio_lab = String(ratio);
-          next.dt_ratio_target = String(ratio);
+          const ratio = IMPELLER_CONSTANTS[value as ImpellerType].d_t_ratio.toFixed(1);
+          next.dt_ratio_lab = ratio;
+          if (prev.dt_ratio_target_same_as_lab)
+            next.dt_ratio_target = ratio;
+        }
+
+        if (key === "h_d_target_same_as_lab" && value === true) {
+          next.h_d_target = next.h_d_lab;
+        }
+        if (key === "dt_ratio_target_same_as_lab" && value === true) {
+          next.dt_ratio_target = next.dt_ratio_lab;
+        }
+        if (key === "n_impellers_target_same_as_lab" && value === true) {
+          next.n_impellers_target = next.n_impellers;
+        }
+
+        if (key === "h_d_lab" && prev.h_d_target_same_as_lab) {
+          next.h_d_target = String(value);
+        }
+        if (key === "dt_ratio_lab" && prev.dt_ratio_target_same_as_lab) {
+          next.dt_ratio_target = String(value);
+        }
+        if (key === "n_impellers" && prev.n_impellers_target_same_as_lab) {
+          next.n_impellers_target = String(value);
         }
 
         return next;
@@ -362,20 +445,6 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
     [form, set]
   );
 
-  const handleBiomassUnitChange = useCallback(
-    (u: BiomassUnit) => {
-      set("biomass_unit", u);
-      setErrors((prev) => {
-        const nextForm = { ...form, biomass_unit: u };
-        const err = getInlineRangeError("biomass", nextForm);
-        const n = { ...prev };
-        if (err) n.biomass = err; else delete n.biomass;
-        return n;
-      });
-    },
-    [form, set]
-  );
-
   // --- Derived display values ---
 
   const scaleRatio = useMemo(() => {
@@ -387,21 +456,24 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
 
   const ourEstimation = useMemo(() => {
     if (form.our_mode !== "estimate") return null;
-    const biomassVal = parseFloat(form.biomass);
-    if (!biomassVal || biomassVal <= 0 || !form.organism_species) return null;
-    const biomassCdw = getBiomassCdw(biomassVal, form.biomass_unit, form.organism_species);
-    const qo2 = QO2_RANGES[form.organism_species as OrganismSpecies];
-    if (!qo2) return null;
+    if (!form.biomass_density_category || !form.organism_species) return null;
+    const species = form.organism_species as OrganismSpecies;
+    const category = form.biomass_density_category as BiomassDensityCategory;
+    const bounds = getOurPeakBounds(species);
+    if (!bounds) return { unsupported: true as const, species_name: speciesDisplayName(form.organism_species) };
+    const biomassCdw = getRepresentativeBiomassCdw(category);
+    const ourPeak = getOurPeakByCategory(species, category);
     return {
-      our_min: qo2.qo2_min * biomassCdw,
-      our_max: qo2.qo2_max * biomassCdw,
-      our_mid: qo2.qo2_midpoint * biomassCdw,
-      qo2_min: qo2.qo2_min,
-      qo2_max: qo2.qo2_max,
+      unsupported: false as const,
+      our_peak: ourPeak ?? bounds.lower,
+      our_min: bounds.lower,
+      our_max: bounds.upper,
       biomass_cdw: biomassCdw,
+      category_label: densityCategoryLabel(category),
+      rheology: category === "high_density" ? "non-Newtonian" : "Newtonian",
       species_name: speciesDisplayName(form.organism_species),
     };
-  }, [form.our_mode, form.biomass, form.biomass_unit, form.organism_species]);
+  }, [form.our_mode, form.biomass_density_category, form.organism_species]);
 
   const transparency = useMemo(() => {
     const totalParams = 12;
@@ -414,7 +486,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
     if (form.v_lab) entered++;
     if (form.v_target) entered++;
     if (form.rpm) entered++;
-    if (form.biomass) entered++;
+    if (form.biomass_density_category) entered++;
     if (form.impeller_type) entered++;
 
     const vvmVal = parseFloat(form.vvm);
@@ -490,11 +562,12 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
       }
 
       if (stepId === "d") {
-        if (!form.biomass) errs.biomass = "Peak biomass is required.";
-        else { const r = getInlineRangeError("biomass", form); if (r) errs.biomass = r; }
+        if (!form.biomass_density_category) errs.biomass_density_category = "Peak biomass category is required.";
         if (!form.temperature) errs.temperature = "Process temperature is required.";
         else { const r = getInlineRangeError("temperature", form); if (r) errs.temperature = r; }
         if (form.do_setpoint !== "") { const r = getInlineRangeError("do_setpoint", form); if (r) errs.do_setpoint = r; }
+        if (form.our_mode === "estimate" && !canEstimateOur(form.organism_species))
+          errs.our_mode = "OUR estimate is unavailable for this organism. Please enter a measured OUR value.";
         if (form.our_mode === "measured") {
           if (!form.our_measured) errs.our_measured = "Measured OUR value is required.";
           else { const r = getInlineRangeError("our_measured", form); if (r) errs.our_measured = r; }
@@ -521,9 +594,9 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
     const temp = parseFloat(form.temperature);
     const hdTarget = parseFloat(form.h_d_target);
     const vvm = parseFloat(form.vvm);
-    const biomass = parseFloat(form.biomass);
-    const biomassCdw = !isNaN(biomass) && biomass > 0
-      ? getBiomassCdw(biomass, form.biomass_unit, form.organism_species as OrganismSpecies) : 0;
+    const biomassCdw = form.biomass_density_category
+      ? BIOMASS_DENSITY_REPRESENTATIVE_CDW[form.biomass_density_category]
+      : 0;
 
     if (!isNaN(vTarget) && !isNaN(vLab) && vLab > 0 && vTarget / vLab > 10000)
       warnings.push({ message: "Extreme scale ratio — predictions carry very high uncertainty. Intermediate scale assessment strongly recommended." });
@@ -531,13 +604,13 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
       warnings.push({ message: "Outside validated range for C* and viscosity correlations." });
     if (!isNaN(hdTarget) && hdTarget > 1.5)
       warnings.push({ message: "Mixing time estimate carries additional uncertainty for H/D > 1.5. Multi-impeller configurations are standard at this scale." });
-    if (biomassCdw > NON_NEWTONIAN_BIOMASS_THRESHOLD)
-      warnings.push({ message: "High biomass — Newtonian viscosity assumption may not hold. Mixing and kLa predictions carry additional uncertainty." });
+    if (biomassCdw >= NON_NEWTONIAN_BIOMASS_THRESHOLD)
+      warnings.push({ message: "High-density biomass selected — non-Newtonian viscosity treatment will be used for kLa estimates." });
     if (!isNaN(vvm) && (vvm > 2.0 || vvm < 0.3))
       warnings.push({ message: "Gassed power correction carries additional uncertainty outside VVM 0.5–2.0." });
 
     return warnings;
-  }, [form.v_lab, form.v_target, form.temperature, form.h_d_target, form.vvm, form.biomass, form.biomass_unit, form.organism_species]);
+  }, [form.v_lab, form.v_target, form.temperature, form.h_d_target, form.vvm, form.biomass_density_category]);
 
   // --- Navigation ---
 
@@ -599,6 +672,9 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
         return;
       }
 
+      const biomassDensityCategory = form.biomass_density_category as BiomassDensityCategory;
+      const representativeBiomass = getRepresentativeBiomassCdw(biomassDensityCategory);
+
       const processInputs: ProcessInputs = {
         organism_class:  form.organism_class as ProcessInputs["organism_class"],
         organism_species: form.organism_species as ProcessInputs["organism_species"],
@@ -616,6 +692,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
 
         v_lab:    parseFloat(form.v_lab),
         v_target: parseFloat(form.v_target),
+        scaleup_criterion: form.scaleup_criterion,
 
         vessel_model:   form.vessel_model || undefined,
         h_d_lab:        parseFloat(form.h_d_lab)    || INPUT_DEFAULTS.h_d_lab,
@@ -623,16 +700,19 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
         dt_ratio_lab:   parseFloat(form.dt_ratio_lab) || IMPELLER_CONSTANTS[form.impeller_type].d_t_ratio,
         dt_ratio_target: parseFloat(form.dt_ratio_target) || IMPELLER_CONSTANTS[form.impeller_type].d_t_ratio,
         n_impellers:    parseInt(form.n_impellers)   || 1,
+        n_impellers_target: parseInt(form.n_impellers_target) || parseInt(form.n_impellers) || 1,
         impeller_type:  form.impeller_type,
         rpm:            parseFloat(form.rpm),
         vvm:            parseFloat(form.vvm) || INPUT_DEFAULTS.vvm,
 
-        biomass:      parseFloat(form.biomass),
-        biomass_unit: form.biomass_unit,
+        biomass:      representativeBiomass,
+        biomass_unit: "g_L_CDW",
+        biomass_density_category: biomassDensityCategory,
         our_mode:     form.our_mode,
         our_measured: form.our_mode === "measured" ? parseFloat(form.our_measured) : undefined,
 
-        do_setpoint:    parseFloat(form.do_setpoint)  ?? INPUT_DEFAULTS.do_setpoint,
+        do_setpoint: parseFloat(form.do_setpoint) ?? INPUT_DEFAULTS.do_setpoint,
+        o2_inlet: parseFloat(form.o2_inlet) || INPUT_DEFAULTS.o2_inlet,
 
         temperature: parseFloat(form.temperature),
         t_cw_inlet:  parseFloat(form.t_cw_inlet) || INPUT_DEFAULTS.t_cw_inlet,
@@ -669,13 +749,25 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
     : form.organism_class === "bacteria" ? "organism-bacteria" : "";
 
   const activeStepDef = steps[currentStep];
+  const hdTargetOptions = useMemo(() => {
+    const labHd = parseFloat(form.h_d_lab);
+    if (isNaN(labHd)) return HD_PRESETS;
+    const rounded = Number(labHd.toFixed(1));
+    return HD_PRESETS.includes(rounded) ? HD_PRESETS : [...HD_PRESETS, rounded].sort((a, b) => a - b);
+  }, [form.h_d_lab]);
+  const dtTargetOptions = useMemo(() => {
+    const labDt = parseFloat(form.dt_ratio_lab);
+    if (isNaN(labDt)) return DT_PRESETS;
+    const rounded = Number(labDt.toFixed(1));
+    return DT_PRESETS.includes(rounded) ? DT_PRESETS : [...DT_PRESETS, rounded].sort((a, b) => a - b);
+  }, [form.dt_ratio_lab]);
 
   if (showAnalyzing) {
     return (
       <AnalyzingAnimation
         onComplete={handleAnalyzingComplete}
         hd={parseFloat(form.h_d_target) || 2.0}
-        nImpellers={parseInt(form.n_impellers) || 1}
+        nImpellers={parseInt(form.n_impellers_target) || parseInt(form.n_impellers) || 1}
         impellerType={form.impeller_type}
         volume={parseFloat(form.v_target) || undefined}
       />
@@ -956,6 +1048,37 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                   {!form.v_lab && <p className="text-[10px] text-silver-600 mt-2">Enter lab volume first</p>}
                   {fieldError("v_target")}
                 </div>
+                <div id="scaleup_criterion" className="mt-4">
+                  <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
+                    Scale-up criterion
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {SCALEUP_CRITERION_OPTIONS.map((opt) => {
+                      const selected = form.scaleup_criterion === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => set("scaleup_criterion", opt.value)}
+                          className={`rounded-xl px-4 py-3.5 text-center transition-all duration-200 option-surface ${selected ? "option-surface--selected" : ""}`}
+                        >
+                          <span className={`text-sm font-semibold ${selected ? "text-accent" : "text-silver-300"}`}>
+                            {opt.value === "kla" ? (
+                              <>
+                                k<sub>L</sub><span className="underline">a</span>
+                              </>
+                            ) : (
+                              opt.label
+                            )}
+                          </span>
+                          <span className="block text-[10px] text-silver-500 mt-1">
+                            {opt.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 {scaleRatio !== null && scaleRatio > 0 && (
                   <div className="mt-4 glass-panel-sm px-4 py-3 flex items-center gap-3">
                     <div className="flex items-end gap-1.5 flex-shrink-0">
@@ -983,7 +1106,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
             {activeStepDef.id === "c" && (
               <div className="space-y-5">
                 <p className="text-[11px] text-silver-600 -mt-1">
-                  Describe your <strong className="text-silver-400">lab vessel</strong>. Target vessel geometry is derived from volume and H/D ratio.
+                  Describe your <strong className="text-silver-400">lab vessel</strong>, then set target-scale geometry and impeller count directly.
                 </p>
 
                 {/* Vessel model */}
@@ -1017,7 +1140,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                     ))}
                   </div>
                   <p className="text-[11px] text-silver-600 mt-1.5">
-                    Default D/T: {IMPELLER_CONSTANTS[form.impeller_type].d_t_ratio} | Np: {IMPELLER_CONSTANTS[form.impeller_type].np}
+                    Default D/T: {IMPELLER_CONSTANTS[form.impeller_type].d_t_ratio.toFixed(1)} | Np: {IMPELLER_CONSTANTS[form.impeller_type].np}
                   </p>
                 </div>
 
@@ -1054,18 +1177,22 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                       className={inputCls("h_d_lab")} min={0.5} max={4} step="0.1" />
                     {fieldError("h_d_lab")}
                   </div>
-                  <div id="h_d_target">
+                  <div id="h_d_target" className="min-h-[112px]">
                     <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
                       H/D ratio (target vessel)
                     </label>
-                    <input type="number" value={form.h_d_target}
-                      onChange={(e) => handleBoundedChange("h_d_target", e.target.value)}
-                      className={inputCls("h_d_target")} placeholder="Auto-inferred from volume" min={0.5} max={4} step="0.1" />
-                    <div className="flex gap-1 mt-2 flex-wrap">
-                      {HD_PRESETS.map((p) => (
-                        <button key={p} type="button" onClick={() => set("h_d_target", String(p))}
-                          className={`text-[11px] px-2.5 py-1 rounded-lg transition-all duration-200 ${
-                            form.h_d_target === String(p)
+                    <button
+                      type="button"
+                      onClick={() => set("h_d_target_same_as_lab", !form.h_d_target_same_as_lab)}
+                      className={`btn-toggle w-full px-3 py-2.5 text-xs mb-2 ${form.h_d_target_same_as_lab ? "active" : ""}`}
+                    >
+                      Same as lab scale
+                    </button>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {hdTargetOptions.map((p) => (
+                        <button key={p} type="button" onClick={() => { set("h_d_target_same_as_lab", false); set("h_d_target", String(p)); }}
+                          className={`text-[11px] px-2.5 py-1.5 rounded-lg transition-all duration-200 ${
+                            parseFloat(form.h_d_target) === p
                               ? "option-surface-sm option-surface--selected text-silver-100"
                               : "option-surface-sm text-silver-500"
                           }`}>
@@ -1088,39 +1215,90 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                       className={inputCls("dt_ratio_lab")} min={0.1} max={0.8} step="0.01" />
                     {fieldError("dt_ratio_lab")}
                   </div>
-                  <div id="dt_ratio_target">
+                  <div id="dt_ratio_target" className="min-h-[112px]">
                     <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
                       D/T ratio (target vessel)
                     </label>
-                    <input type="number" value={form.dt_ratio_target}
-                      onChange={(e) => handleBoundedChange("dt_ratio_target", e.target.value)}
-                      className={inputCls("dt_ratio_target")} min={0.1} max={0.8} step="0.01" />
+                    <button
+                      type="button"
+                      onClick={() => set("dt_ratio_target_same_as_lab", !form.dt_ratio_target_same_as_lab)}
+                      className={`btn-toggle w-full px-3 py-2.5 text-xs mb-2 ${form.dt_ratio_target_same_as_lab ? "active" : ""}`}
+                    >
+                      Same as lab scale
+                    </button>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {dtTargetOptions.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => { set("dt_ratio_target_same_as_lab", false); set("dt_ratio_target", p.toFixed(1)); }}
+                          className={`text-[11px] px-2.5 py-1.5 rounded-lg transition-all duration-200 ${
+                            parseFloat(form.dt_ratio_target) === p
+                              ? "option-surface-sm option-surface--selected text-silver-100"
+                              : "option-surface-sm text-silver-500"
+                          }`}
+                        >
+                          {p.toFixed(1)}
+                        </button>
+                      ))}
+                    </div>
                     {fieldError("dt_ratio_target")}
                   </div>
                 </div>
 
-                {/* Number of impellers */}
-                <div id="n_impellers">
-                  <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
-                    Number of impellers (lab vessel)
-                    {!form.n_impellers_overridden && form.n_impellers && (
-                      <span className="text-silver-600 font-normal normal-case tracking-normal italic ml-2">
-                        ~auto-inferred from H/D
-                      </span>
-                    )}
-                  </label>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4].map((n) => (
-                      <button key={n} type="button"
-                        onClick={() => { set("n_impellers", String(n)); set("n_impellers_overridden", true); }}
-                        className={`w-11 h-11 rounded-xl text-sm font-mono transition-all duration-200 ${
-                          form.n_impellers === String(n)
-                            ? "option-surface option-surface--selected text-silver-100"
-                            : "option-surface text-silver-500"
-                        }`}>
-                        {n}
-                      </button>
-                    ))}
+                {/* Number of impellers (lab + target) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div id="n_impellers">
+                    <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
+                      Number of impellers (lab vessel)
+                      {!form.n_impellers_overridden && form.n_impellers && (
+                        <span className="text-silver-600 font-normal normal-case tracking-normal italic ml-2">
+                          ~auto-inferred from H/D
+                        </span>
+                      )}
+                    </label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4].map((n) => (
+                        <button key={n} type="button"
+                          onClick={() => { set("n_impellers", String(n)); set("n_impellers_overridden", true); }}
+                          className={`w-11 h-11 rounded-xl text-sm font-mono transition-all duration-200 ${
+                            form.n_impellers === String(n)
+                              ? "option-surface option-surface--selected text-silver-100"
+                              : "option-surface text-silver-500"
+                          }`}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div id="n_impellers_target" className="min-h-[112px]">
+                    <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
+                      Number of impellers (target vessel)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => set("n_impellers_target_same_as_lab", !form.n_impellers_target_same_as_lab)}
+                      className={`btn-toggle w-full px-3 py-2.5 text-xs mb-2 ${form.n_impellers_target_same_as_lab ? "active" : ""}`}
+                    >
+                      Same as lab scale
+                    </button>
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4].map((n) => (
+                        <button
+                          key={`target-${n}`}
+                          type="button"
+                          onClick={() => { set("n_impellers_target_same_as_lab", false); set("n_impellers_target", String(n)); }}
+                          className={`text-[11px] px-2.5 py-1.5 rounded-lg font-mono transition-all duration-200 ${
+                            form.n_impellers_target === String(n)
+                              ? "option-surface-sm option-surface--selected text-silver-100"
+                              : "option-surface-sm text-silver-500"
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1137,35 +1315,30 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                   </p>
                   <div className="space-y-5">
 
-                    {/* Peak biomass */}
-                    <div id="biomass">
+                    {/* Peak biomass category */}
+                    <div id="biomass_density_category">
                       <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
                         Peak biomass<RequiredMark />
                       </label>
-                      <div className="flex gap-2">
-                        <input type="number" value={form.biomass}
-                          onChange={(e) => handleBoundedChange("biomass", e.target.value)}
-                          className={inputCls("biomass", "flex-1")} placeholder="e.g. 40" min={0} step="any" />
-                        <div className="flex rounded-xl overflow-hidden option-surface-sm p-0.5 gap-0.5">
-                          {(["g_L_CDW", "OD600"] as BiomassUnit[]).map((u) => (
-                            <button key={u} type="button" onClick={() => handleBiomassUnitChange(u)}
-                              className={`px-3 py-2 text-xs transition-all duration-200 rounded-[10px] border ${
-                                form.biomass_unit === u
-                                  ? "border-[color:var(--option-selected-border)] bg-[var(--bg-elevated)] text-accent font-medium shadow-sm"
-                                  : "border-transparent bg-[var(--bg-elevated)] text-silver-500 hover:bg-[var(--bg-sunken)]"
-                              }`}>
-                              {u === "g_L_CDW" ? "g/L CDW" : "OD600"}
-                            </button>
-                          ))}
-                        </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {BIOMASS_DENSITY_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => set("biomass_density_category", option.value)}
+                            className={`text-left p-4 rounded-xl transition-all duration-200 option-surface ${
+                              form.biomass_density_category === option.value ? "option-surface--selected" : ""
+                            }`}
+                          >
+                            <span className="block text-sm font-medium text-silver-200">{option.label}</span>
+                            <span className="block text-[11px] text-accent mt-1">
+                              {option.range} · {option.assumption}
+                            </span>
+                            <span className="block text-[10px] text-silver-600 mt-1.5">{option.description}</span>
+                          </button>
+                        ))}
                       </div>
-                      {form.biomass_unit === "OD600" && form.biomass && form.organism_species && (
-                        <p className="text-[11px] text-silver-600 mt-1.5 italic">
-                          ~ {(parseFloat(form.biomass) * CDW_OD_FACTORS[form.organism_species as OrganismSpecies]).toFixed(1)} g/L CDW
-                          (factor: {CDW_OD_FACTORS[form.organism_species as OrganismSpecies]})
-                        </p>
-                      )}
-                      {fieldError("biomass")}
+                      {fieldError("biomass_density_category")}
                     </div>
 
                     {/* OUR mode */}
@@ -1175,8 +1348,8 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                       </label>
                       <p className="text-[11px] text-silver-600 mb-3 -mt-1">
                         {form.organism_species
-                          ? `Typical ${speciesDisplayName(form.organism_species)} qO₂: ${QO2_RANGES[form.organism_species as OrganismSpecies]?.qo2_min}–${QO2_RANGES[form.organism_species as OrganismSpecies]?.qo2_max} mmol/g CDW/h`
-                          : "Select your organism to see typical OUR ranges"}
+                          ? "Estimate mode uses microbe physiology and the selected biomass density category."
+                          : "Select your organism and biomass density to see the OUR estimate."}
                       </p>
                       <div className="space-y-2">
                         {/* Measured */}
@@ -1200,30 +1373,47 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                         </label>
 
                         {/* Estimate */}
-                        <label className={`flex items-start gap-3 p-4 rounded-xl cursor-pointer transition-all duration-200 option-surface ${form.our_mode === "estimate" ? "option-surface--selected" : ""}`}>
-                          <input type="radio" name="our_mode" value="estimate" checked={form.our_mode === "estimate"} onChange={() => set("our_mode", "estimate")} className="mt-0.5 accent-accent" />
+                        <label className={`flex items-start gap-3 p-4 rounded-xl transition-all duration-200 option-surface ${
+                          form.our_mode === "estimate" ? "option-surface--selected" : ""
+                        } ${!canEstimateOur(form.organism_species) ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}>
+                          <input
+                            type="radio"
+                            name="our_mode"
+                            value="estimate"
+                            checked={form.our_mode === "estimate"}
+                            disabled={!canEstimateOur(form.organism_species)}
+                            onChange={() => set("our_mode", "estimate")}
+                            className="mt-0.5 accent-accent"
+                          />
                           <div className="flex-1">
-                            <span className="text-sm font-medium text-silver-200">No &mdash; estimate from my biomass</span>
-                            <p className="text-[10px] text-silver-600 mt-0.5">Directional confidence for OTR domain</p>
+                            <span className="text-sm font-medium text-silver-200">Estimate from microbe physiology and cell density</span>
+                            <p className="text-[10px] text-silver-600 mt-0.5">
+                              {canEstimateOur(form.organism_species)
+                                ? "Directional confidence for OTR domain"
+                                : "Unavailable for other bacteria/yeast; enter measured OUR"}
+                            </p>
                             {form.our_mode === "estimate" && (
                               <div className="mt-3">
                                 {ourEstimation ? (
-                                  <div className="glass-panel-sm border-[var(--border-primary)] bg-[var(--bg-sunken)] px-4 py-3 text-sm text-accent italic">
-                                    OUR estimated: ~{ourEstimation.our_min.toFixed(0)}&ndash;{ourEstimation.our_max.toFixed(0)} mmol/L/h
-                                    <span className="text-accent/70 block text-xs mt-1">
-                                      Based on {ourEstimation.species_name} qO&#x2082; {ourEstimation.qo2_min}&ndash;{ourEstimation.qo2_max} mmol/g/h &times; {ourEstimation.biomass_cdw.toFixed(1)} g/L CDW
-                                    </span>
-                                    <span className="text-accent/70 block text-xs">Midpoint used: ~{ourEstimation.our_mid.toFixed(0)} mmol/L/h</span>
-                                  </div>
+                                  ourEstimation.unsupported ? (
+                                    <div className="glass-panel-sm border-[var(--border-primary)] bg-[var(--bg-sunken)] px-4 py-3 text-sm text-risk-moderate italic">
+                                      OUR estimate is unavailable for {ourEstimation.species_name}. Please enter a measured OUR value.
+                                    </div>
+                                  ) : (
+                                    <div className="glass-panel-sm border-[var(--border-primary)] bg-[var(--bg-sunken)] px-4 py-3 text-sm text-accent italic">
+                                      OUR estimated: ~{ourEstimation.our_peak.toFixed(0)} mmol/L/h
+                                      <span className="text-accent/70 block text-xs mt-1">
+                                        {ourEstimation.species_name}, {ourEstimation.category_label.toLowerCase()} ({ourEstimation.biomass_cdw.toFixed(0)} g/L CDW, {ourEstimation.rheology})
+                                      </span>
+                                      <span className="text-accent/70 block text-xs">
+                                        Bounds: {ourEstimation.our_min.toFixed(0)}&ndash;{ourEstimation.our_max.toFixed(0)} mmol/L/h
+                                      </span>
+                                    </div>
+                                  )
                                 ) : (
-                                  <p className="text-xs text-silver-600 italic">Enter biomass and select species to see OUR estimate.</p>
+                                  <p className="text-xs text-silver-600 italic">Select organism and biomass density to see OUR estimate.</p>
                                 )}
-                                <div className="mt-3">
-                                  <label className="text-[11px] text-silver-600">Override estimate (optional):</label>
-                                  <input type="number" value={form.our_estimate_override}
-                                    onChange={(e) => set("our_estimate_override", e.target.value)}
-                                    className={inputCls("our_estimate_override")} placeholder="mmol/L/h" min={0} step="any" />
-                                </div>
+                                {fieldError("our_mode")}
                               </div>
                             )}
                           </div>
@@ -1231,27 +1421,58 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                       </div>
                     </div>
 
-                    {/* DO setpoint (control point) */}
-                    <div id="do_setpoint">
-                      <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
-                        DO setpoint — control point (%)
-                      </label>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-[3] relative">
-                          <input type="range" min={0} max={100} value={form.do_setpoint || 30}
-                            onChange={(e) => handleBoundedChange("do_setpoint", e.target.value)}
-                            className="w-full accent-accent h-1.5" />
-                          <div className="flex justify-between text-[9px] text-silver-700 mt-1 px-0.5">
-                            <span>0%</span>
-                            <span className="text-risk-low/50">20&ndash;40% optimal</span>
-                            <span>100%</span>
+                    {/* ── Sub-section: Oxygen ── */}
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-4">
+                        Oxygen
+                      </p>
+                      <div className="space-y-4">
+                        {/* DO setpoint (control point) */}
+                        <div id="do_setpoint">
+                          <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
+                            DO setpoint — control point (%)
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-[3] relative">
+                              <input type="range" min={0} max={100} value={form.do_setpoint || 30}
+                                onChange={(e) => handleBoundedChange("do_setpoint", e.target.value)}
+                                className="w-full accent-accent h-1.5" />
+                              <div className="flex justify-between text-[9px] text-silver-700 mt-1 px-0.5">
+                                <span>0%</span>
+                                <span className="text-risk-low/50">20&ndash;40% optimal</span>
+                                <span>100%</span>
+                              </div>
+                            </div>
+                            <input type="number" value={form.do_setpoint}
+                              onChange={(e) => handleBoundedChange("do_setpoint", e.target.value)}
+                              className={inputCls("do_setpoint", "!w-20 flex-shrink-0")} min={0} max={100} />
+                          </div>
+                          {fieldError("do_setpoint")}
+                        </div>
+
+                        {/* Inlet oxygen fraction */}
+                        <div id="o2_inlet">
+                          <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
+                            Inlet oxygen enrichment
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {OXYGEN_INLET_OPTIONS.map((option) => {
+                              const selected = parseFloat(form.o2_inlet) === option.value;
+                              return (
+                                <button
+                                  key={option.key}
+                                  type="button"
+                                  onClick={() => set("o2_inlet", String(option.value))}
+                                  className={`btn-toggle px-3 py-2.5 text-left ${selected ? "active" : ""}`}
+                                >
+                                  <span className="block text-sm">{option.label}</span>
+                                  <span className="block text-[10px] text-silver-500 mt-0.5">{option.percentage}</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                        <input type="number" value={form.do_setpoint}
-                          onChange={(e) => handleBoundedChange("do_setpoint", e.target.value)}
-                          className={inputCls("do_setpoint", "!w-20 flex-shrink-0")} min={0} max={100} />
                       </div>
-                      {fieldError("do_setpoint")}
                     </div>
 
                   </div>

@@ -1,13 +1,10 @@
 // Pure operating-point scale-up utilities.
 
 import type { ImpellerType, VesselGeometry } from "@/lib/types";
-import {
-  getScaleupOperatingRange,
-  IMPELLER_CONSTANTS,
-  RHO,
-} from "@/lib/constants";
+import { getScaleupOperatingRange } from "@/lib/constants";
 import { deriveGasVelocity, deriveVesselGeometry } from "../derivations";
 import { buildOperatingPoint, computeKlaEnsemble } from "../oxygen/kla_achievable";
+import { gassedPower } from "../correlations/gassed_power";
 
 export type ScaleupCriterion = "power_per_volume" | "kla" | "shear";
 
@@ -17,11 +14,12 @@ export interface ScaleupCriteriaInput {
   rpm_lab: number;
   vvm_lab: number;
   h_t_lab: number;
-  d_t_lab: number;
+  d_t_lab?: number;
   h_t_target: number;
-  d_t_target: number;
+  d_t_target?: number;
   impeller_type: ImpellerType;
-  n_impellers: number;
+  n_impellers_lab: number;
+  n_impellers_target: number;
   mu: number;
   biomass_cdw: number;
 }
@@ -60,36 +58,66 @@ interface OperatingPointMetrics {
 
 function calculatePowerAtRpm(
   rpm: number,
+  vvm: number,
   geometry: VesselGeometry,
   impeller_type: ImpellerType,
   n_impellers: number,
+  mu: number,
 ): number {
-  const impeller = IMPELLER_CONSTANTS[impeller_type];
-  const n_rps = rpm / 60;
-  const p_ungassed = impeller.np * RHO * n_rps ** 3 * geometry.d_imp ** 5;
-  return n_impellers * impeller.pg_p_factor * p_ungassed;
+  const gas = deriveGasVelocity(vvm, geometry.volume_m3 * 1000, geometry.a_cross);
+  const op = buildOperatingPoint({
+    D_T: geometry.t_diameter,
+    H_L: geometry.h_liquid,
+    V_L: geometry.volume_m3,
+    d_i: geometry.d_imp,
+    impeller_type,
+    n_imp: n_impellers,
+    N_rps: rpm / 60,
+    Q_gas: gas.q_gas,
+    v_s: gas.vs,
+    mu_L: mu,
+  });
+  return gassedPower(op);
 }
 
 function calculatePvAtRpm(
   rpm: number,
+  vvm: number,
   geometry: VesselGeometry,
   impeller_type: ImpellerType,
   n_impellers: number,
+  mu: number,
 ): number {
-  return calculatePowerAtRpm(rpm, geometry, impeller_type, n_impellers) / geometry.volume_m3;
+  return calculatePowerAtRpm(rpm, vvm, geometry, impeller_type, n_impellers, mu) / geometry.volume_m3;
 }
 
-function calculateRpmForPower(
-  power_w: number,
+function solveRpmForPower(
+  target_power_w: number,
+  vvm: number,
   geometry: VesselGeometry,
   impeller_type: ImpellerType,
   n_impellers: number,
+  mu: number,
 ): number {
-  const impeller = IMPELLER_CONSTANTS[impeller_type];
-  const denominator =
-    n_impellers * impeller.pg_p_factor * impeller.np * RHO * geometry.d_imp ** 5;
-  if (denominator <= 0 || power_w <= 0) return 0;
-  return Math.cbrt(power_w / denominator) * 60;
+  if (target_power_w <= 0 || geometry.volume_m3 <= 0) return 0;
+
+  let lo = 0;
+  let hi = 1;
+  while (
+    calculatePowerAtRpm(hi, vvm, geometry, impeller_type, n_impellers, mu) < target_power_w &&
+    hi < 100000
+  ) {
+    hi *= 2;
+  }
+
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    const power = calculatePowerAtRpm(mid, vvm, geometry, impeller_type, n_impellers, mu);
+    if (power < target_power_w) lo = mid;
+    else hi = mid;
+  }
+
+  return hi;
 }
 
 function calculateTipSpeed(rpm: number, d_imp: number): number {
@@ -113,8 +141,6 @@ function calculateMetrics(
   mu: number,
   biomass_cdw: number,
 ): OperatingPointMetrics {
-  const power_w = calculatePowerAtRpm(rpm, geometry, impeller_type, n_impellers);
-  const pv_w_m3 = calculatePvAtRpm(rpm, geometry, impeller_type, n_impellers);
   const gas = deriveGasVelocity(vvm, geometry.volume_m3 * 1000, geometry.a_cross);
   const op = buildOperatingPoint({
     D_T: geometry.t_diameter,
@@ -128,6 +154,8 @@ function calculateMetrics(
     v_s: gas.vs,
     mu_L: mu,
   });
+  const power_w = gassedPower(op);
+  const pv_w_m3 = power_w / geometry.volume_m3;
   const kla = computeKlaEnsemble(op, power_w, biomass_cdw);
 
   return {
@@ -142,6 +170,7 @@ function calculateMetrics(
 
 function applyRpmAndPvMax(
   rpm: number,
+  vvm: number,
   geometry: VesselGeometry,
   input: ScaleupCriteriaInput,
   max_rpm: number,
@@ -155,16 +184,20 @@ function applyRpmAndPvMax(
 
   const pvAtRpm = calculatePvAtRpm(
     targetRpm,
+    vvm,
     geometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
+    input.mu,
   );
   if (pvAtRpm > max_pv_w_m3) {
-    targetRpm = calculateRpmForPower(
+    targetRpm = solveRpmForPower(
       max_pv_w_m3 * geometry.volume_m3,
+      vvm,
       geometry,
       input.impeller_type,
-      input.n_impellers,
+      input.n_impellers_target,
+      input.mu,
     );
     flags.push(
       `Target P/V clamped to ${max_pv_w_m3.toPrecision(4)} W/m3; selected scale-up criterion not fully matched.`,
@@ -224,7 +257,7 @@ function prepare(input: ScaleupCriteriaInput) {
     input.vvm_lab,
     labGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_lab,
     input.mu,
     input.biomass_cdw,
   );
@@ -277,7 +310,7 @@ function findIdealRpmForKla(
     vvm,
     geometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
     input.mu,
     input.biomass_cdw,
   ).kla_h;
@@ -289,7 +322,7 @@ function findIdealRpmForKla(
       vvm,
       geometry,
       input.impeller_type,
-      input.n_impellers,
+      input.n_impellers_target,
       input.mu,
       input.biomass_cdw,
     ).kla_h;
@@ -300,7 +333,7 @@ function findIdealRpmForKla(
     vvm,
     geometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
     input.mu,
     input.biomass_cdw,
     hi,
@@ -312,18 +345,20 @@ export function scaleUpByPowerPerVolume(input: ScaleupCriteriaInput): ScaleupCri
   const flags: string[] = [];
 
   const idealPower = lab.pv_w_m3 * targetGeometry.volume_m3;
-  const idealRpm = calculateRpmForPower(
+  const idealRpm = solveRpmForPower(
     idealPower,
+    input.vvm_lab,
     targetGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
+    input.mu,
   );
   const ideal = calculateMetrics(
     idealRpm,
     input.vvm_lab,
     targetGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
     input.mu,
     input.biomass_cdw,
   );
@@ -333,14 +368,22 @@ export function scaleUpByPowerPerVolume(input: ScaleupCriteriaInput): ScaleupCri
   targetPv = pvClamp.value;
   if (pvClamp.flag) flags.push(pvClamp.flag);
 
-  const targetRpmFromPv = calculateRpmForPower(
+  let targetVvm = input.vvm_lab;
+  const vvmClamp = clampToMax(targetVvm, limits.max_aeration_vvm.max, "Target aeration");
+  targetVvm = vvmClamp.value;
+  if (vvmClamp.flag) flags.push(vvmClamp.flag);
+
+  const targetRpmFromPv = solveRpmForPower(
     targetPv * targetGeometry.volume_m3,
+    targetVvm,
     targetGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
+    input.mu,
   );
   const targetRpm = applyRpmAndPvMax(
     targetRpmFromPv,
+    targetVvm,
     targetGeometry,
     input,
     limits.max_rpm.max,
@@ -348,17 +391,12 @@ export function scaleUpByPowerPerVolume(input: ScaleupCriteriaInput): ScaleupCri
     flags,
   );
 
-  let targetVvm = input.vvm_lab;
-  const vvmClamp = clampToMax(targetVvm, limits.max_aeration_vvm.max, "Target aeration");
-  targetVvm = vvmClamp.value;
-  if (vvmClamp.flag) flags.push(vvmClamp.flag);
-
   const target = calculateMetrics(
     targetRpm,
     targetVvm,
     targetGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
     input.mu,
     input.biomass_cdw,
   );
@@ -390,13 +428,14 @@ export function scaleUpByKla(input: ScaleupCriteriaInput): ScaleupCriteriaResult
     targetVvm,
     targetGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
     input.mu,
     input.biomass_cdw,
   );
 
   const targetRpm = applyRpmAndPvMax(
     idealRpm,
+    targetVvm,
     targetGeometry,
     input,
     limits.max_rpm.max,
@@ -409,7 +448,7 @@ export function scaleUpByKla(input: ScaleupCriteriaInput): ScaleupCriteriaResult
     targetVvm,
     targetGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
     input.mu,
     input.biomass_cdw,
   );
@@ -436,18 +475,9 @@ export function scaleUpByShear(input: ScaleupCriteriaInput): ScaleupCriteriaResu
     input.vvm_lab,
     targetGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
     input.mu,
     input.biomass_cdw,
-  );
-
-  const targetRpm = applyRpmAndPvMax(
-    idealRpm,
-    targetGeometry,
-    input,
-    limits.max_rpm.max,
-    limits.max_pv_w_m3.max,
-    flags,
   );
 
   let targetVvm = input.vvm_lab;
@@ -455,12 +485,22 @@ export function scaleUpByShear(input: ScaleupCriteriaInput): ScaleupCriteriaResu
   targetVvm = vvmClamp.value;
   if (vvmClamp.flag) flags.push(vvmClamp.flag);
 
+  const targetRpm = applyRpmAndPvMax(
+    idealRpm,
+    targetVvm,
+    targetGeometry,
+    input,
+    limits.max_rpm.max,
+    limits.max_pv_w_m3.max,
+    flags,
+  );
+
   const target = calculateMetrics(
     targetRpm,
     targetVvm,
     targetGeometry,
     input.impeller_type,
-    input.n_impellers,
+    input.n_impellers_target,
     input.mu,
     input.biomass_cdw,
   );

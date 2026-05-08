@@ -605,7 +605,7 @@ function ExecutiveSummary({
   }
 
   const riskRows = [
-    { domain: "Oxygen Transfer (OTR)", score: otr.score, key: `kLa ratio: ${fmt(otr.kla_ratio, 2)}`, conf: confidenceLabel(otr.confidence) },
+    { domain: "Oxygen Transfer (OTR)", score: otr.score, key: `OTR/OUR: ${fmt(otr.kla_ratio, 2)}`, conf: confidenceLabel(otr.confidence) },
     { domain: "Mixing", score: mixing.score, key: mixing.da_max != null ? `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s, Da: ${fmt(mixing.da_max, 3)}` : `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s`, conf: confidenceLabel(mixing.confidence) },
     { domain: "Shear Stress", score: shear.score, key: `Tip speed: ${fmt(shear.tip_speed)} m/s`, conf: confidenceLabel(shear.confidence) },
     { domain: "CO\u2082 Accumulation", score: co2.score, key: co2.activated && co2.pco2_bottom != null ? `pCO\u2082: ${fmt(co2.pco2_bottom, 3)} bar` : "Not activated", conf: confidenceLabel(co2.confidence) },
@@ -711,7 +711,7 @@ function RiskDetail({
         { label: "OUR peak", value: `${fmt(derived.our_peak)} mmol/L/h` },
         { label: "kLa required", value: `${fmt(otr.kla_required)} h\u207B\u00B9` },
         { label: "kLa achievable (moderate P/V)", value: `${fmt(otr.kla_target_moderate)} h\u207B\u00B9` },
-        { label: "kLa ratio", value: fmt(otr.kla_ratio, 2) },
+        { label: "OTR/OUR ratio", value: fmt(otr.kla_ratio, 2) },
         { label: "P/V at target (moderate)", value: `${fmt(otr.pv_moderate)} W/m\u00B3` },
       ],
       thresholdNote: ">1.5 Low, 1.0\u20131.5 Moderate, 0.7\u20131.0 High, <0.7 Critical",

@@ -58,3 +58,9 @@ export const CHILTON_DREW_C: Record<ImpellerType, number> = {
 export const JACKET_GAP_FRACTION = 0.05;
 export const JACKET_GAP_MIN_M    = 0.020; // m
 export const JACKET_GAP_MAX_M    = 0.080; // m
+
+// --- Safe bounds for overall heat-transfer coefficient U ---
+// Applied to correlation-derived U to keep estimates in a conservative,
+// physically plausible range for jacketed bioreactors.
+export const U_OVERALL_MIN_W_M2K = 100;
+export const U_OVERALL_MAX_W_M2K = 400;
