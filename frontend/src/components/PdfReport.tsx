@@ -201,8 +201,8 @@ function getMitigation(
     case "otr":
       return `Required kLa of ${fmt(otr.kla_required)} h\u207B\u00B9 exceeds standard P/V achievability at ${fmtInt(inputs.v_target)} L. Options: (1) Reduce target biomass ~20% to bring OUR within standard kLa range. (2) Dual Rushton or Rushton-to-PBT cascade configuration. (3) Pressure overlay (+0.5 bar increases C* by ~15%).`;
     case "mixing":
-      if (mixing.da != null) {
-        return `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Feed produces Da = ${fmt(mixing.da, 3)}. Options: (1) Switch to continuous feed. (2) Relocate feed port to impeller high-turbulence zone. (3) Reduce peak feed rate and extend feed duration.`;
+      if (mixing.da_max != null) {
+        return `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Feed produces Da = ${fmt(mixing.da_max, 3)}. Options: (1) Switch to continuous feed. (2) Relocate feed port to impeller high-turbulence zone. (3) Reduce peak feed rate and extend feed duration.`;
       }
       return `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Options: (1) Add a second impeller. (2) Reduce target vessel H/D ratio. (3) Increase agitation speed within shear limits.`;
     case "shear":
@@ -221,7 +221,7 @@ function getMitigation(
 interface PilotRow {
   klaAchievable: number;
   mixingTime: number;
-  da: number | null;
+  da_max: number | null;
   tipSpeed: number;
   pco2Bottom: number | null;
   heatKwM3: number;
@@ -229,7 +229,7 @@ interface PilotRow {
 
 function computePilot(inputs: ProcessInputs, derived: DerivedParameters): PilotRow {
   const vPilot = pilotVolume(inputs.v_lab, inputs.v_target);
-  const geometry = deriveVesselGeometry(vPilot, inputs.h_d_target, inputs.impeller_type);
+  const geometry = deriveVesselGeometry(vPilot, inputs.h_d_target, inputs.impeller_type, inputs.dt_ratio_target);
   const gas = deriveGasVelocity(inputs.vvm, vPilot, geometry.a_cross);
 
   const klaAchievable = klaVantRiet(derived.pv_lab, gas.vs);
@@ -241,10 +241,10 @@ function computePilot(inputs: ProcessInputs, derived: DerivedParameters): PilotR
     RUSZKOWSKI_CONSTANT * pilotT * pilotT /
     (Math.pow(epsilon, 1 / 3) * Math.pow(pilotDimp, 4 / 3));
 
-  let da: number | null = null;
+  let da_max: number | null = null;
   if (inputs.process_type === "fed_batch" && inputs.feed_frequency) {
     const tau = FEED_TAU_MAP[inputs.feed_frequency];
-    da = mixingTime / tau;
+    da_max = mixingTime / tau;
   }
 
   const dImpLab = derived.lab_geometry.d_imp;
@@ -275,7 +275,7 @@ function computePilot(inputs: ProcessInputs, derived: DerivedParameters): PilotR
   const qMetabolic = METABOLIC_HEAT_FACTOR * derived.our_peak * vPilotM3;
   const heatKwM3 = vPilotM3 > 0 ? qMetabolic / vPilotM3 : 0;
 
-  return { klaAchievable, mixingTime, da, tipSpeed, pco2Bottom, heatKwM3 };
+  return { klaAchievable, mixingTime, da_max, tipSpeed, pco2Bottom, heatKwM3 };
 }
 
 // --- Styles ---
@@ -606,7 +606,7 @@ function ExecutiveSummary({
 
   const riskRows = [
     { domain: "Oxygen Transfer (OTR)", score: otr.score, key: `kLa ratio: ${fmt(otr.kla_ratio, 2)}`, conf: confidenceLabel(otr.confidence) },
-    { domain: "Mixing", score: mixing.score, key: mixing.da != null ? `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s, Da: ${fmt(mixing.da, 3)}` : `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s`, conf: confidenceLabel(mixing.confidence) },
+    { domain: "Mixing", score: mixing.score, key: mixing.da_max != null ? `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s, Da: ${fmt(mixing.da_max, 3)}` : `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s`, conf: confidenceLabel(mixing.confidence) },
     { domain: "Shear Stress", score: shear.score, key: `Tip speed: ${fmt(shear.tip_speed)} m/s`, conf: confidenceLabel(shear.confidence) },
     { domain: "CO\u2082 Accumulation", score: co2.score, key: co2.activated && co2.pco2_bottom != null ? `pCO\u2082: ${fmt(co2.pco2_bottom, 3)} bar` : "Not activated", conf: confidenceLabel(co2.confidence) },
     { domain: "Heat Removal", score: heat.score, key: `Heat ratio: ${fmt(heat.heat_ratio * 100)}%`, conf: confidenceLabel(heat.confidence) },
@@ -726,11 +726,11 @@ function RiskDetail({
       params: [
         { label: "\u03B8_mix (lab)", value: `${fmt(mixing.theta_mix_lab)} s` },
         { label: "\u03B8_mix (target)", value: `${fmt(mixing.theta_mix_target)} s` },
-        ...(mixing.da != null
-          ? [{ label: "Da (Damk\u00F6hler number)", value: fmt(mixing.da, 3) }]
+        ...(mixing.da_max != null
+          ? [{ label: "Da (Damk\u00F6hler number)", value: fmt(mixing.da_max, 3) }]
           : []),
       ],
-      thresholdNote: mixing.da != null
+      thresholdNote: mixing.da_max != null
         ? "Da: <0.01 Low, 0.01\u20130.1 Moderate, 0.1\u20131.0 High, >1.0 Critical"
         : "\u03B8_mix: <30s Low, 30\u201360s Moderate, >60s High",
       uncertaintyNote: `Mixing time scales as (V_target/V_lab)^(1/3). Actual performance depends on vessel internals and impeller configuration.`,
@@ -883,8 +883,8 @@ function Projections({
     {
       param: "Da (mixing)",
       lab: "\u2014",
-      pilotVal: pilot.da != null ? fmt(pilot.da, 3) : "\u2014",
-      prod: mixing.da != null ? fmt(mixing.da, 3) : "\u2014",
+      pilotVal: pilot.da_max != null ? fmt(pilot.da_max, 3) : "\u2014",
+      prod: mixing.da_max != null ? fmt(mixing.da_max, 3) : "\u2014",
     },
     {
       param: "Tip speed (m/s)",

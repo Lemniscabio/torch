@@ -22,7 +22,7 @@ const EXAMPLE_INPUTS: ProcessInputs = {
   do_setpoint: 30,
   temperature: 37,
   t_cw_inlet: 12,
-  feed_frequency: "1_10min",
+  fed_batch_config: { initial_fill_pct: 60, batch_time_h: 24 },
   h_d_lab: 1.2,
   h_d_target: 2.5,
   n_impellers: 2,

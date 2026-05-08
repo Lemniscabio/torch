@@ -19,13 +19,28 @@ export type ImpellerType = "rushton" | "pitched_blade" | "marine" | "unknown";
 
 export type BiomassUnit = "g_L_CDW" | "OD600";
 
+// "exhaust_gas" retained for type-safety during transition; engine support
+// will be dropped in Stage 3. New UI only exposes "measured" | "estimate".
 export type OurMode = "measured" | "estimate" | "exhaust_gas";
 
+/** @deprecated — will be removed in Stage 3. τ_feed now derived from fed_batch_config.batch_time_h. */
 export type FeedFrequency = "continuous" | "1_10min" | "10_30min" | "30plus_min";
 
 export type RiskScore = "low" | "moderate" | "high" | "critical";
 
 export type Confidence = "high_confidence" | "reliable" | "directional";
+
+// --- Batch / Fed-batch sub-configs (new in Stage 1) ---
+
+export interface BatchConfig {
+  x0_g_L: number;   // Initial biomass concentration (g/L CDW), default 0.5
+  s0_g_L: number;   // Initial substrate concentration (g/L), default 20.0
+}
+
+export interface FedBatchConfig {
+  initial_fill_pct: number;  // Initial fill as % of working volume, default 60
+  batch_time_h: number;      // Duration of batch phase (h), default 24
+}
 
 // --- Input Parameters (Section 1.1) ---
 
@@ -35,34 +50,52 @@ export interface ProcessInputs {
   organism_species: OrganismSpecies;
   process_type: ProcessType;
 
+  // Batch / fed-batch sub-configs (populated based on process_type)
+  batch_config?: BatchConfig;
+  fed_batch_config?: FedBatchConfig;
+
   // Section B: Scale Definition
   v_lab: number;        // Lab working volume (L), > 0, <= 1000
   v_target: number;     // Target working volume (L), > v_lab
 
-  // Section C: Vessel & Agitation
+  // Section C: Lab-scale Vessel & Agitation
+  // Note: these describe the lab vessel; target geometry is derived from v_target + h_d_target.
   vessel_model?: string;            // Lab vessel brand/model (optional)
   h_d_lab: number;                  // H/D ratio (lab), default 1.2, range 0.5–4.0
   h_d_target: number;               // H/D ratio (target), range 0.5–4.0
-  n_impellers: number;              // Number of impellers (target), 1–4
+  n_impellers: number;              // Number of impellers (lab vessel), 1–4
   impeller_type: ImpellerType;      // Default: rushton
+  dt_ratio_lab?: number;             // d/T ratio override for lab vessel (default: from impeller type)
+  dt_ratio_target?: number;          // d/T ratio override for target vessel (default: from impeller type)
   rpm: number;                      // Agitation at peak demand (RPM), > 0, <= 3000
   vvm: number;                      // Airflow at peak demand (VVM), default 1.0, 0.1–5.0
 
-  // Section D: Process Characterisation
+  // Section D: Oxygen & Biomass
   biomass: number;                  // Peak biomass, > 0, <= 200
   biomass_unit: BiomassUnit;        // Default: g_L_CDW
   our_mode: OurMode;                // OUR input mode, default: estimate
   our_measured?: number;            // OUR measured value (mmol/L/h), required if our_mode == measured
+  /** @deprecated — exhaust_gas mode removed from UI in Stage 2 */
   o2_inlet?: number;                // Exhaust gas inlet O2 (%), default 20.9
+  /** @deprecated */
   o2_outlet?: number;               // Exhaust gas outlet O2 (%)
+  /** @deprecated */
   gas_flow?: number;                // Exhaust gas flow rate (L/min)
-  do_setpoint: number;              // DO setpoint (%), default 30, 0–100
+  do_setpoint: number;              // DO setpoint at control point (%), default 30, 0–100
+  do_at_bottom_pct?: number;        // DO at vessel bottom (%), default 20; used for driving force in R1
+
+  // Section D: Thermal
   temperature: number;              // Process temperature (°C), 15–55
   t_cw_inlet: number;               // Cooling water inlet temp (°C), default 12, 0–40
+  cooling_water_flowrate_lpm?: number; // Cooling water flowrate (L/min), default 30
 
-  // Section E: Fed-batch Parameters (visible when process_type == fed_batch)
+  // Section E: Fed-batch Parameters
+  // feed_frequency and feed_interval_seconds are deprecated; τ_feed is now
+  // derived from fed_batch_config.batch_time_h in Stage 3.
+  /** @deprecated */
   feed_frequency?: FeedFrequency;
-  feed_interval_seconds?: number;   // Optional numeric override, > 0
+  /** @deprecated */
+  feed_interval_seconds?: number;
 }
 
 // --- Derived Parameters (Section 2.1, D1–D7) ---
@@ -101,10 +134,18 @@ export interface DerivedParameters {
   q_gas_target: number;           // Gas flow rate at target (m³/s)
   vs_target: number;              // Superficial gas velocity at target (m/s)
 
-  // D6 — C* and driving force
-  c_star: number;                 // O₂ saturation concentration (mmol/L)
-  c_l: number;                    // Dissolved O₂ at setpoint (mmol/L)
-  driving_force: number;          // c_star - c_l (mmol/L)
+  // D6 — O₂ solubility (Tier 2: hydrostatic + inlet O₂ fraction)
+  // Lab-scale
+  c_star_lab:           number; // mmol/L — average C* at lab scale
+  df_lm_lab:            number; // mmol/L — log-mean driving force at lab scale
+  // Target-scale (primary for OTR risk)
+  c_star:               number; // mmol/L — average C* at target scale
+  c_star_bot:           number; // mmol/L — C* at sparger (target)
+  c_star_top:           number; // mmol/L — C* at headspace (target)
+  c_l:                  number; // mmol/L — dissolved O₂ at DO setpoint (target avg C*)
+  driving_force:        number; // mmol/L — log-mean (C*−C_L) at target scale
+  p_bot_pa:             number; // Pa — absolute pressure at target sparger
+  p_top_pa:             number; // Pa — absolute pressure at target headspace
 
   // D7 — Biomass conversion
   biomass_cdw: number;            // Biomass in g/L CDW (converted if OD600)
@@ -126,6 +167,9 @@ export interface OtrRiskResult {
   pv_conservative: number;                  // W/m³
   pv_moderate: number;                      // W/m³
   pv_aggressive: number;                    // W/m³
+  correlations_used?: string[];
+  kla_std?: number;
+  kla_components?: Record<string, number>;
   confidence: Confidence;
   driver: string;
 }
@@ -134,9 +178,12 @@ export interface MixingRiskResult {
   score: RiskScore;
   theta_mix_lab: number;                    // Lab mixing time (s)
   theta_mix_target: number;                 // Target mixing time (s)
-  da?: number;                              // Damköhler number (fed-batch only)
-  da_score?: RiskScore;                     // Da-based score (fed-batch only)
-  ph_score: RiskScore;                      // pH control score
+  // Kinetic Damköhler numbers (populated when biomass > 0)
+  da_max?: number;                          // Conservative Da (μ_max-based) — primary risk indicator
+  da_eff?: number;                          // Informational Da (μ_eff from OUR)
+  da_score?: RiskScore;                     // Score based on da_max
+  mu_eff?: number;                          // h⁻¹ — bulk-average μ inferred from OUR
+  ph_score: RiskScore;                      // pH control score (θ_mix threshold)
   confidence: Confidence;
   driver: string;
 }
@@ -146,7 +193,9 @@ export interface ShearRiskResult {
   n_target: number;                         // Target impeller speed (rev/s)
   tip_speed: number;                        // Tip speed at target (m/s)
   tip_speed_threshold: number;              // Organism threshold (m/s)
-  tip_speed_ratio: number;                  // tip_speed / threshold
+  tip_speed_ratio: number;                  // tip_speed / threshold (actual / critical)
+  tip_speed_margin: number;                 // threshold / tip_speed (critical / actual); <1 = risk
+  margin_score: RiskScore;                  // risk score derived from tip_speed_margin
   confidence: Confidence;
   driver: string;
 }
@@ -156,9 +205,13 @@ export interface Co2RiskResult {
   activated: boolean;                       // Whether detailed calc was triggered
   cer?: number;                             // CO₂ evolution rate (mmol/L/h)
   kla_co2?: number;                         // kLa for CO₂ (h⁻¹)
-  pco2_bulk?: number;                       // Bulk pCO₂ (bar)
-  pco2_bottom?: number;                     // pCO₂ at vessel bottom (bar)
+  y_co2_out?: number;                       // Exhaust gas CO₂ mole fraction (−)
+  pco2_gas_avg?: number;                    // Log-mean gas-phase pCO₂ (bar)
+  pco2_bulk?: number;                       // Dissolved CO₂ driving force contribution (bar)
+  pco2_bottom?: number;                     // Total pCO₂ at vessel bottom (bar)
   dp_hydro?: number;                        // Hydrostatic pressure (Pa)
+  pco2_critical?: number;                   // Organism inhibition threshold (bar)
+  pco2_margin?: number;                     // pco2_critical / pco2_bottom; <1 = risk
   confidence: Confidence;
   driver: string;
 }
@@ -170,6 +223,7 @@ export interface HeatRiskResult {
   dt_lm: number;                            // Log-mean temperature difference (K)
   q_cool_max: number;                       // Maximum cooling capacity (kW)
   heat_ratio: number;                       // Q_metabolic / Q_cool_max
+  t_cw_outlet?: number;                     // Computed cooling water outlet temp (°C) — Stage 5
   confidence: Confidence;
   driver: string;
 }

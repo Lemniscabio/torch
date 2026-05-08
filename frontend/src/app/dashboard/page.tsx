@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { setAssessment, setFormDraft, clearFormDraft } from "@/lib/store";
 import { runAssessment } from "@/lib/engine";
 import type { ProcessInputs } from "@/lib/types";
-import { INPUT_DEFAULTS } from "@/lib/constants";
+import { IMPELLER_CONSTANTS, INPUT_DEFAULTS } from "@/lib/constants";
 import { apiUrl, authHeaders, clearToken } from "@/lib/api";
 import type { FormState } from "@/components/InputForm";
 
@@ -219,6 +219,8 @@ export default function DashboardPage() {
       vessel_model: inp.vessel_model ?? "",
       h_d_lab: String(inp.h_d_lab),
       h_d_target: String(inp.h_d_target),
+      dt_ratio_lab: inp.dt_ratio_lab != null ? String(inp.dt_ratio_lab) : String(IMPELLER_CONSTANTS[inp.impeller_type].d_t_ratio),
+      dt_ratio_target: inp.dt_ratio_target != null ? String(inp.dt_ratio_target) : String(IMPELLER_CONSTANTS[inp.impeller_type].d_t_ratio),
       n_impellers: String(inp.n_impellers),
       n_impellers_overridden: false,
       impeller_type: inp.impeller_type,
@@ -229,14 +231,14 @@ export default function DashboardPage() {
       our_mode: inp.our_mode,
       our_measured: inp.our_measured != null ? String(inp.our_measured) : "",
       our_estimate_override: "",
-      o2_inlet: String(inp.o2_inlet ?? INPUT_DEFAULTS.o2_inlet),
-      o2_outlet: inp.o2_outlet != null ? String(inp.o2_outlet) : "",
-      gas_flow: inp.gas_flow != null ? String(inp.gas_flow) : "",
       do_setpoint: String(inp.do_setpoint),
       temperature: String(inp.temperature),
       t_cw_inlet: String(inp.t_cw_inlet),
-      feed_frequency: inp.feed_frequency ?? "",
-      feed_interval_seconds: inp.feed_interval_seconds != null ? String(inp.feed_interval_seconds) : "",
+      cooling_water_flowrate: String(inp.cooling_water_flowrate_lpm ?? INPUT_DEFAULTS.cooling_water_flowrate_lpm),
+      batch_x0: inp.batch_config ? String(inp.batch_config.x0_g_L) : "0.5",
+      batch_s0: inp.batch_config ? String(inp.batch_config.s0_g_L) : "20",
+      fed_batch_fill_pct: inp.fed_batch_config ? String(inp.fed_batch_config.initial_fill_pct) : "60",
+      fed_batch_time_h: inp.fed_batch_config ? String(inp.fed_batch_config.batch_time_h) : "24",
     };
     setFormDraft(draft);
 

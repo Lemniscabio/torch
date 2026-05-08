@@ -19,10 +19,16 @@ export interface PreviewFormState {
   organism_class: OrganismClass | "";
   organism_species: OrganismSpecies | "";
   process_type: ProcessType | "";
+  batch_x0?: string;
+  batch_s0?: string;
+  fed_batch_fill_pct?: string;
+  fed_batch_time_h?: string;
   v_lab: string;
   v_target: string;
   h_d_lab: string;
   h_d_target: string;
+  dt_ratio_lab?: string;
+  dt_ratio_target?: string;
   n_impellers: string;
   impeller_type: string;
   rpm: string;
@@ -31,15 +37,11 @@ export interface PreviewFormState {
   biomass_unit: string;
   our_mode: string;
   our_measured: string;
-  o2_inlet: string;
-  o2_outlet: string;
-  gas_flow: string;
   do_setpoint: string;
   temperature: string;
   t_cw_inlet: string;
-  feed_frequency: string;
-  feed_interval_seconds: string;
-  // extra
+  cooling_water_flowrate?: string;
+  // optional / legacy
   vessel_model?: string;
   our_estimate_override?: string;
   n_impellers_overridden?: boolean;
@@ -163,6 +165,8 @@ export default function LivePreview({ formState }: LivePreviewProps) {
         v_target: vTarget,
         h_d_lab: parseFloat(formState.h_d_lab) || INPUT_DEFAULTS.h_d_lab,
         h_d_target: parseFloat(formState.h_d_target) || 1.0,
+        dt_ratio_lab: formState.dt_ratio_lab ? parseFloat(formState.dt_ratio_lab) : undefined,
+        dt_ratio_target: formState.dt_ratio_target ? parseFloat(formState.dt_ratio_target) : undefined,
         n_impellers: parseInt(formState.n_impellers) || 1,
         impeller_type: (formState.impeller_type || "rushton") as ProcessInputs["impeller_type"],
         rpm,
@@ -173,24 +177,12 @@ export default function LivePreview({ formState }: LivePreviewProps) {
         our_measured: formState.our_mode === "measured" && formState.our_measured
           ? parseFloat(formState.our_measured)
           : undefined,
-        o2_inlet: formState.our_mode === "exhaust_gas" && formState.o2_inlet
-          ? parseFloat(formState.o2_inlet)
-          : undefined,
-        o2_outlet: formState.our_mode === "exhaust_gas" && formState.o2_outlet
-          ? parseFloat(formState.o2_outlet)
-          : undefined,
-        gas_flow: formState.our_mode === "exhaust_gas" && formState.gas_flow
-          ? parseFloat(formState.gas_flow)
-          : undefined,
         do_setpoint: parseFloat(formState.do_setpoint) || INPUT_DEFAULTS.do_setpoint,
         temperature: temp,
         t_cw_inlet: parseFloat(formState.t_cw_inlet) || INPUT_DEFAULTS.t_cw_inlet,
-        feed_frequency: formState.process_type === "fed_batch" && formState.feed_frequency
-          ? formState.feed_frequency as ProcessInputs["feed_frequency"]
-          : undefined,
-        feed_interval_seconds: formState.process_type === "fed_batch" && formState.feed_interval_seconds
-          ? parseFloat(formState.feed_interval_seconds)
-          : undefined,
+        cooling_water_flowrate_lpm: formState.cooling_water_flowrate
+          ? parseFloat(formState.cooling_water_flowrate)
+          : INPUT_DEFAULTS.cooling_water_flowrate_lpm,
       };
 
       return runAssessment(inputs);

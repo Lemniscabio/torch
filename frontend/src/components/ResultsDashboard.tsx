@@ -296,7 +296,7 @@ function derivedAtScale(
   volume: number,
   hd: number,
 ): DerivedParameters {
-  const geometry = deriveVesselGeometry(volume, hd, inputs.impeller_type);
+  const geometry = deriveVesselGeometry(volume, hd, inputs.impeller_type, inputs.dt_ratio_target);
   const gas = deriveGasVelocity(inputs.vvm, volume, geometry.a_cross);
   return {
     ...baseDerived,
@@ -333,8 +333,8 @@ function MitigationBlock({
       recommendation = `Required kLa of ${fmt(otr.kla_required)} h\u207B\u00B9 exceeds standard P/V achievability at ${fmtInt(inputs.v_target)} L. Options: (1) Reduce target biomass ~20% to bring OUR within standard kLa range. (2) Dual Rushton or Rushton-to-PBT cascade configuration. (3) Pressure overlay (+0.5 bar increases C* by ~15%).`;
       break;
     case "mixing":
-      if (mixing.da != null) {
-        recommendation = `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Feed produces Da = ${fmt(mixing.da, 3)} \u2014 substrate gradients expected. Options: (1) Switch to continuous feed. (2) Relocate feed port to impeller high-turbulence zone. (3) Reduce peak feed rate and extend feed duration.`;
+      if (mixing.da_max != null) {
+        recommendation = `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Feed produces Da = ${fmt(mixing.da_max, 3)} \u2014 substrate gradients expected. Options: (1) Switch to continuous feed. (2) Relocate feed port to impeller high-turbulence zone. (3) Reduce peak feed rate and extend feed duration.`;
       } else {
         recommendation = `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s \u2014 pH excursions likely. Options: (1) Add a second impeller. (2) Reduce target vessel H/D ratio. (3) Increase agitation speed within shear limits.`;
       }
@@ -483,12 +483,12 @@ function MixingDetail({ mixing, derived, inputs, results }: {
           </tbody>
         </table>
       </div>
-      {inputs.process_type === "fed_batch" && mixing.da != null && (
+      {inputs.process_type === "fed_batch" && mixing.da_max != null && (
         <div>
           <h4 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-1">Damköhler Number</h4>
           <table className="w-full text-sm">
             <tbody>
-              <Row label="Da = \u03B8_mix / \u03C4_feed" value={fmt(mixing.da, 3)} />
+              <Row label="Da = \u03B8_mix / \u03C4_feed" value={fmt(mixing.da_max, 3)} />
               <Row label="Da score" value={mixing.da_score ? riskLabel(mixing.da_score) : "\u2014"} />
             </tbody>
           </table>
@@ -663,7 +663,7 @@ function HeatDetail({ heat, derived, inputs, results }: {
 interface PilotResults {
   klaAchievable: number;
   mixingTime: number;
-  da: number | null;
+  da_max: number | null;
   tipSpeed: number;
   pco2Bottom: number | null;
   heatKwM3: number;
@@ -683,10 +683,10 @@ function computePilotResults(
   const epsilon = baseDerived.pv_lab / RHO;
   const mixingTime = RUSZKOWSKI_CONSTANT * pilotT * pilotT / (Math.pow(epsilon, 1/3) * Math.pow(pilotDimp, 4/3));
 
-  let da: number | null = null;
+  let da_max: number | null = null;
   if (inputs.process_type === "fed_batch" && inputs.feed_frequency) {
     const tau = FEED_TAU_MAP[inputs.feed_frequency];
-    da = mixingTime / tau;
+    da_max = mixingTime / tau;
   }
 
   const dImpLab = baseDerived.lab_geometry.d_imp;
@@ -713,7 +713,7 @@ function computePilotResults(
   const qMetabolic = METABOLIC_HEAT_FACTOR * baseDerived.our_peak * vPilotM3;
   const heatKwM3 = vPilotM3 > 0 ? qMetabolic / vPilotM3 : 0;
 
-  return { klaAchievable, mixingTime, da, tipSpeed, pco2Bottom, heatKwM3 };
+  return { klaAchievable, mixingTime, da_max, tipSpeed, pco2Bottom, heatKwM3 };
 }
 
 // --- Domain card icons ---
@@ -918,8 +918,8 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
   // Key numbers for each domain card
   const domainKeyNumbers: Record<RiskDomain, string> = {
     otr: `kLa ratio: ${fmt(otr.kla_ratio, 2)}`,
-    mixing: mixing.da != null
-      ? `\u03B8: ${fmt(mixing.theta_mix_target)}s \u00B7 Da: ${fmt(mixing.da, 3)}`
+    mixing: mixing.da_max != null
+      ? `\u03B8: ${fmt(mixing.theta_mix_target)}s \u00B7 Da: ${fmt(mixing.da_max, 3)}`
       : `\u03B8_mix: ${fmt(mixing.theta_mix_target)}s`,
     shear: `v_tip: ${fmt(shear.tip_speed)} m/s`,
     co2: co2.activated && co2.pco2_bottom != null
@@ -1167,12 +1167,12 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
                       <td className="text-right">{fmt(pilot.mixingTime)}</td>
                       <td className="text-right">{fmt(mixing.theta_mix_target)}</td>
                     </tr>
-                    {inputs.process_type === "fed_batch" && mixing.da != null && (
+                    {inputs.process_type === "fed_batch" && mixing.da_max != null && (
                       <tr>
                         <td className="font-sans text-silver-400">Da (mixing)</td>
                         <td className="text-right text-silver-600">&mdash;</td>
-                        <td className="text-right">{fmt(pilot.da ?? 0, 3)}</td>
-                        <td className="text-right">{fmt(mixing.da, 3)}</td>
+                        <td className="text-right">{fmt(pilot.da_max ?? 0, 3)}</td>
+                        <td className="text-right">{fmt(mixing.da_max, 3)}</td>
                       </tr>
                     )}
                     <tr>

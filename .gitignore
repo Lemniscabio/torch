@@ -36,3 +36,14 @@ frontend/next-env.d.ts
 # cache files
 .next/
 .vscode/
+
+# docs
+docs/output
+
+# ignore
+ignore/*
+
+# backend
+backend/.agents/
+backend/prisma/migrations/
+backend/skills-lock.json
