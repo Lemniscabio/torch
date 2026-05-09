@@ -15,7 +15,6 @@ import type {
   ProcessInputs,
   DerivedParameters,
 } from "@/lib/types";
-import type { PartialAssessmentResult } from "@/lib/engine";
 import {
   RISK_COLOURS,
   VANT_RIET_COALESCING_COEFFICIENT,
@@ -36,6 +35,7 @@ import {
   deriveVesselGeometry,
   deriveGasVelocity,
   buildReactorScaleConfigs,
+  runAssessment,
 } from "@/lib/engine";
 import { deriveOxygenSolubility } from "@/lib/engine/derivations";
 import type { ReactorScaleConfig } from "@/lib/engine/reactor_configs";
@@ -43,6 +43,7 @@ import { buildOperatingPoint, computeKlaEnsemble } from "@/lib/engine/oxygen/kla
 import { runHeatCapacityCheck } from "@/lib/engine/heat/heat_capacity";
 import GeneratePdfButton from "@/components/GeneratePdfButton";
 import type { StoredAssessment } from "@/lib/store";
+import { getScaleupOperatingRange, IMPELLER_CONSTANTS } from "@/lib/constants";
 
 // --- Props ---
 
@@ -61,6 +62,12 @@ const SPECIES_LABELS: Record<string, string> = {
   p_pastoris: "P. pastoris",
   other_bacteria: "Other bacterium",
   other_yeast: "Other yeast",
+};
+
+const SCALEUP_CRITERION_LABELS: Record<NonNullable<ProcessInputs["scaleup_criterion"]>, string> = {
+  power_per_volume: "P/V",
+  kla: "kLa",
+  shear: "tip speed",
 };
 
 // --- Dark theme risk colours ---
@@ -146,7 +153,8 @@ function compositeLabel(score: number, theme: "light" | "dark" = "dark"): { labe
 
 // --- Radar chart summary ---
 
-const RADAR_DOMAIN_ORDER: RiskDomain[] = ["otr", "mixing", "shear", "co2", "heat"];
+const DISPLAY_DOMAIN_ORDER: RiskDomain[] = ["mixing", "otr", "shear", "co2", "heat"];
+const RADAR_DOMAIN_ORDER: RiskDomain[] = DISPLAY_DOMAIN_ORDER;
 
 function radarRadius(score: RiskScore): number {
   switch (score) {
@@ -292,56 +300,6 @@ function derivedAtScale(
     q_gas_target: gas.q_gas,
     vs_target: gas.vs,
   };
-}
-
-// --- Mitigation recommendation ---
-
-function MitigationBlock({
-  domain,
-  results,
-  inputs,
-}: {
-  domain: RiskDomain;
-  results: PartialAssessmentResult;
-  inputs: ProcessInputs;
-}) {
-  const { otr, mixing, shear, co2, heat } = results;
-  const score =
-    domain === "otr" ? otr.score :
-    domain === "mixing" ? mixing.score :
-    domain === "shear" ? shear.score :
-    domain === "co2" ? co2.score :
-    heat.score;
-
-  if (score !== "high" && score !== "critical") return null;
-
-  let recommendation: string;
-  switch (domain) {
-    case "otr":
-      recommendation = `Required kLa of ${fmt(otr.kla_required)} h\u207B\u00B9 exceeds standard P/V achievability at ${fmtInt(inputs.v_target)} L. Options: (1) Reduce target biomass ~20% to bring OUR within standard kLa range. (2) Dual Rushton or Rushton-to-PBT cascade configuration. (3) Pressure overlay (+0.5 bar increases C* by ~15%).`;
-      break;
-    case "mixing":
-      recommendation = `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. O2 mixing margin (t_o2/t_mix) = ${fmt(mixing.o2_mixing_ratio_target ?? 0, 3)} \u2014 oxygen gradients may persist. Options: (1) Increase agitation/mixing efficiency. (2) Reduce peak OUR demand. (3) Increase O2 availability at the same DO control strategy.`;
-      break;
-    case "shear":
-      recommendation = `Tip speed of ${fmt(shear.tip_speed)} m/s at constant P/V exceeds ${SPECIES_LABELS[inputs.organism_species] ?? inputs.organism_species} threshold of ${fmt(shear.tip_speed_threshold)} m/s. Options: (1) Switch to pitched blade turbine. (2) Accept lower P/V with supplementary O\u2082 strategy. (3) Consider scale-up at constant tip speed instead of constant P/V.`;
-      break;
-    case "co2":
-      recommendation = `Estimated pCO\u2082 at vessel bottom is ${fmt(co2.pco2_bottom ?? 0, 2)} bar \u2014 above 0.15 bar inhibitory threshold. Options: (1) Increase sparging rate to enhance CO\u2082 stripping. (2) Reduce biomass target. (3) Lower H/D vessel geometry.`;
-      break;
-    case "heat":
-      recommendation = `Metabolic heat generation of ${fmt(heat.q_metabolic)} kW exceeds jacket cooling capacity of ${fmt(heat.q_cool_max)} kW. Options: (1) Add internal cooling coil. (2) Reduce target biomass or OUR. (3) Lower process temperature if organism permits.`;
-      break;
-  }
-
-  return (
-    <div className="mt-4 glass-panel-sm border-risk-high/20 bg-risk-high/[0.04] p-4">
-      <h4 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-2">
-        Mitigation Recommendation
-      </h4>
-      <p className="text-sm text-silver-300 leading-relaxed">{recommendation}</p>
-    </div>
-  );
 }
 
 type Band = {
@@ -539,6 +497,104 @@ function Highlight({ children }: { children: React.ReactNode }) {
   return <strong className="text-silver-100 font-semibold">{children}</strong>;
 }
 
+interface CalculationLine {
+  label: React.ReactNode;
+  equation?: React.ReactNode;
+  substitution?: React.ReactNode;
+  finalValue: React.ReactNode;
+  note?: React.ReactNode;
+}
+
+function EquationLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[13px] md:text-[14px] leading-relaxed">
+      <span className="text-silver-500">Equation</span>
+      <span className="mx-2 text-silver-600">:</span>
+      <span className="font-mono text-silver-200">{children}</span>
+    </div>
+  );
+}
+
+function SubstitutionLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[13px] md:text-[14px] leading-relaxed">
+      <span className="text-silver-500">Value</span>
+      <span className="mx-2 text-silver-600">:</span>
+      <span className="font-mono text-silver-300">{children}</span>
+    </div>
+  );
+}
+
+function FinalValueLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[14px] md:text-[15px] leading-relaxed">
+      <span className="text-silver-500">Final</span>
+      <span className="mx-2 text-silver-600">:</span>
+      <span className="font-mono font-semibold text-silver-100">{children}</span>
+    </div>
+  );
+}
+
+function KlaSymbol() {
+  return <>k<sub>L</sub><span className="underline">a</span></>;
+}
+
+function ScaleCalculationColumn({
+  title,
+  lines,
+  theme,
+  score,
+}: {
+  title: string;
+  lines: CalculationLine[];
+  theme: "light" | "dark";
+  score: RiskScore;
+}) {
+  const colour = riskColour(score, theme);
+  return (
+    <div className="space-y-3 md:px-4 first:pl-0 last:pr-0">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-silver-500">{title}</p>
+        <span className={riskBadgeClass(score)} style={{ borderColor: `${colour}66`, color: colour }}>
+          {riskLabel(score)}
+        </span>
+      </div>
+      <div className="space-y-2.5">
+        {lines.map((line, index) => (
+          <div key={index} className="rounded-lg border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.025] p-3">
+            <p className="text-[13px] font-semibold text-silver-100 mb-1.5">{line.label}</p>
+            {line.equation ? <EquationLine>{line.equation}</EquationLine> : null}
+            {line.substitution ? <SubstitutionLine>{line.substitution}</SubstitutionLine> : null}
+            <FinalValueLine>{line.finalValue}</FinalValueLine>
+            {line.note ? <p className="mt-1.5 text-[12px] leading-relaxed text-silver-500">{line.note}</p> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScaleAnalysisGrid({
+  lab,
+  target,
+  labScore,
+  targetScore,
+  theme,
+}: {
+  lab: CalculationLine[];
+  target: CalculationLine[];
+  labScore: RiskScore;
+  targetScore: RiskScore;
+  theme: "light" | "dark";
+}) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-0 md:divide-x md:divide-black/[0.08] md:dark:divide-white/[0.08]">
+      <ScaleCalculationColumn title="Lab scale" lines={lab} score={labScore} theme={theme} />
+      <ScaleCalculationColumn title="Target scale" lines={target} score={targetScore} theme={theme} />
+    </div>
+  );
+}
+
 function DetailScaffold({
   question,
   fraction,
@@ -548,7 +604,6 @@ function DetailScaffold({
   higherIsSafer,
   theme,
   narrative,
-  mitigation,
 }: {
   question: string;
   fraction: {
@@ -563,7 +618,6 @@ function DetailScaffold({
   higherIsSafer: boolean;
   theme: "light" | "dark";
   narrative: React.ReactNode;
-  mitigation: React.ReactNode;
 }) {
   return (
     <div className="space-y-5 animate-fade-in">
@@ -604,21 +658,20 @@ function DetailScaffold({
         <ScoreColumn title="Target scale" score={target.score} value={target.value} bands={bands} higherIsSafer={higherIsSafer} theme={theme} />
       </div>
       <div className="glass-panel-sm p-4 border-black/[0.08] dark:border-white/[0.08] space-y-2">
-        <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-silver-400">Target scale analysis and mitigation</p>
+        <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-silver-400">Calculation Breakdown</p>
+        <p className="text-[12px] text-silver-500 -mt-1 mb-2">Work through the maths</p>
         {narrative}
       </div>
-      {mitigation}
     </div>
   );
 }
 
 // --- Detail panels ---
 
-function OtrDetail({ otr, derived, inputs, results, theme }: {
+function OtrDetail({ otr, derived, inputs, theme }: {
   otr: OtrRiskResult;
   derived: DerivedParameters;
   inputs: ProcessInputs;
-  results: PartialAssessmentResult;
   theme: "light" | "dark";
 }) {
   const our = otr.our_peak_selected ?? derived.our_peak;
@@ -632,9 +685,8 @@ function OtrDetail({ otr, derived, inputs, results, theme }: {
     { score: "high", label: "High", min: 0.7, max: 1.0 },
     { score: "critical", label: "Critical", max: 0.7 },
   ];
-  const solubilityMgL = derived.c_star * 32;
-  const klaMin = otr.kla_min ?? otr.kla_target_conservative;
-  const klaMax = otr.kla_max ?? otr.kla_target_aggressive;
+  const labScore = scoreFromBands(scoreLabValue, oxygenBands);
+  const targetScore = scoreFromBands(scoreTargetValue, oxygenBands);
 
   return (
     <DetailScaffold
@@ -645,35 +697,76 @@ function OtrDetail({ otr, derived, inputs, results, theme }: {
         textNumerator: <>Oxygen Transfer Rate (mmol/L/h)</>,
         textDenominator: <>Oxygen Uptake Rate (mmol/L/h)</>,
       }}
-      lab={{ score: scoreFromBands(scoreLabValue, oxygenBands), value: scoreLabValue }}
-      target={{ score: scoreFromBands(scoreTargetValue, oxygenBands), value: scoreTargetValue }}
+      lab={{ score: labScore, value: scoreLabValue }}
+      target={{ score: targetScore, value: scoreTargetValue }}
       bands={oxygenBands}
       higherIsSafer
       theme={theme}
       narrative={
-        <>
-          <MetricLine
-            label="OTR"
-            value={<>{fmt(otrTarget, 1)} mmol/L/h</>}
-            tail={
-              <>
-                is controlled by <Highlight>k<sub>L</sub><span className="underline">a</span> ({fmt(klaMin, 1)}–{fmt(klaMax, 1)} h<sup>−1</sup>)</Highlight>, <Highlight>oxygen solubility ({fmt(solubilityMgL, 2)} mg/L)</Highlight>, and <Highlight>DO set point ({fmt(inputs.do_setpoint, 1)}%)</Highlight>.
-              </>
-            }
-          />
-          <MetricLine label="OUR" value={<>{fmt(our, 1)} mmol/L/h</>} tail="is microbe and biomass density dependent." />
-        </>
+        <ScaleAnalysisGrid
+          labScore={labScore}
+          targetScore={targetScore}
+          theme={theme}
+          lab={[
+            {
+              label: "Oxygen uptake rate",
+              finalValue: <>{fmt(our, 1)} mmol/L/h</>,
+              note: "Direct value from measured OUR or organism/density estimate.",
+            },
+            {
+              label: <><KlaSymbol /></>,
+              finalValue: <>{fmt(otr.kla_lab, 1)} h<sup>-1</sup></>,
+              note: <>Calculated as the mean of the active <KlaSymbol /> ensemble: Van't Riet (1979), Garcia-Ochoa and Gomez (2009), Linek et al. (2004), and impeller-specific correlations from the local correlation bank.</>,
+            },
+            {
+              label: "Oxygen transfer rate",
+              equation: <>OTR = <KlaSymbol /> × ΔC<sub>LM</sub></>,
+              substitution: <>{fmt(otr.kla_lab, 1)} × {fmt(derived.df_lm_lab, 3)}</>,
+              finalValue: <>{fmt(otrLab, 1)} mmol/L/h</>,
+              note: <>ΔC<sub>LM</sub> is computed from oxygen solubility C* and the DO set point.</>,
+            },
+            {
+              label: "Score",
+              equation: <>Score = OTR / OUR</>,
+              substitution: <>{fmt(otrLab, 1)} / {fmt(our, 1)}</>,
+              finalValue: <>{fmt(scoreLabValue, 2)}</>,
+            },
+          ]}
+          target={[
+            {
+              label: "Oxygen uptake rate",
+              finalValue: <>{fmt(our, 1)} mmol/L/h</>,
+              note: "Same organism and biomass demand applied at target scale.",
+            },
+            {
+              label: <><KlaSymbol /></>,
+              finalValue: <>{fmt(otr.kla_target_moderate, 1)} h<sup>-1</sup></>,
+              note: <>Calculated as the mean of the active <KlaSymbol /> ensemble: Van't Riet (1979), Garcia-Ochoa and Gomez (2009), Linek et al. (2004), and impeller-specific correlations from the local correlation bank.</>,
+            },
+            {
+              label: "Oxygen transfer rate",
+              equation: <>OTR = <KlaSymbol /> × ΔC<sub>LM</sub></>,
+              substitution: <>{fmt(otr.kla_target_moderate, 1)} × {fmt(derived.driving_force, 3)}</>,
+              finalValue: <>{fmt(otrTarget, 1)} mmol/L/h</>,
+              note: <>ΔC<sub>LM</sub> is computed from oxygen solubility C* and the DO set point.</>,
+            },
+            {
+              label: "Score",
+              equation: <>Score = OTR / OUR</>,
+              substitution: <>{fmt(otrTarget, 1)} / {fmt(our, 1)}</>,
+              finalValue: <>{fmt(scoreTargetValue, 2)}</>,
+            },
+          ]}
+        />
       }
-      mitigation={<MitigationBlock domain="otr" results={results} inputs={inputs} />}
     />
   );
 }
 
-function MixingDetail({ mixing, derived, inputs, results, theme }: {
+function MixingDetail({ mixing, derived, inputs, theme }: {
   mixing: MixingRiskResult;
   derived: DerivedParameters;
   inputs: ProcessInputs;
-  results: PartialAssessmentResult;
   theme: "light" | "dark";
 }) {
   const mixingBands: Band[] = [
@@ -682,6 +775,11 @@ function MixingDetail({ mixing, derived, inputs, results, theme }: {
     { score: "high", label: "High", min: 0.1, max: 1 },
     { score: "critical", label: "Critical", max: 0.1 },
   ];
+  const targetConfig = buildReactorScaleConfigs(inputs, { method: inputs.scaleup_criterion ?? "power_per_volume" }).target;
+  const epsilonLab = derived.pv_lab / RHO;
+  const epsilonTarget = targetConfig.pv_w_m3 / RHO;
+  const labScore = scoreFromBands(mixing.o2_mixing_ratio_lab, mixingBands);
+  const targetScore = scoreFromBands(mixing.o2_mixing_ratio_target, mixingBands);
 
   return (
     <DetailScaffold
@@ -692,26 +790,69 @@ function MixingDetail({ mixing, derived, inputs, results, theme }: {
         textNumerator: <>Oxygen uptake time (s)</>,
         textDenominator: <>Mixing time (s)</>,
       }}
-      lab={{ score: scoreFromBands(mixing.o2_mixing_ratio_lab, mixingBands), value: mixing.o2_mixing_ratio_lab }}
-      target={{ score: scoreFromBands(mixing.o2_mixing_ratio_target, mixingBands), value: mixing.o2_mixing_ratio_target }}
+      lab={{ score: labScore, value: mixing.o2_mixing_ratio_lab }}
+      target={{ score: targetScore, value: mixing.o2_mixing_ratio_target }}
       bands={mixingBands}
       higherIsSafer
       theme={theme}
       narrative={
-        <>
-          <MetricLine label="Oxygen uptake time" value={<>{fmt(mixing.oxygen_depletion_time_target_s, 2)} s</>} tail={<>is dependent on <Highlight>OUR ({fmt(derived.our_peak, 1)} mmol/L/h)</Highlight> and <Highlight>DO setpoint ({fmt(inputs.do_setpoint, 1)}%)</Highlight>.</>} />
-          <MetricLine label="Mixing time" value={<>{fmt(mixing.theta_mix_target, 2)} s</>} tail="is dependent on reactor geometry, operating conditions, and scale. It is calculated using the Ruszkowski correlation." />
-        </>
+        <ScaleAnalysisGrid
+          labScore={labScore}
+          targetScore={targetScore}
+          theme={theme}
+          lab={[
+            {
+              label: <>Oxygen uptake time τ<sub>O</sub></>,
+              equation: <>τ<sub>O</sub> = 3600 × C* × (DO / 100) / OUR</>,
+              substitution: <>3600 × {fmt(derived.c_star_lab, 3)} × ({fmt(inputs.do_setpoint, 1)} / 100) / {fmt(derived.our_peak, 1)}</>,
+              finalValue: <>{fmt(mixing.oxygen_depletion_time_lab_s, 2)} s</>,
+              note: <>C* is oxygen solubility at this scale; DO is the control-point set point.</>,
+            },
+            {
+              label: <>Mixing time τ<sub>mix</sub></>,
+              equation: <>τ<sub>mix</sub> = C<sub>R</sub>T<sup>2</sup> / (ε<sup>1/3</sup>d<sub>i</sub><sup>4/3</sup>)</>,
+              substitution: <>{RUSZKOWSKI_CONSTANT} × {fmt(derived.lab_geometry.t_diameter, 3)}<sup>2</sup> / ({fmt(epsilonLab, 3)}<sup>1/3</sup> × {fmt(derived.lab_geometry.d_imp, 3)}<sup>4/3</sup>)</>,
+              finalValue: <>{fmt(mixing.theta_mix_lab, 2)} s</>,
+              note: <>Ruszkowski correlation; ε = P/V / ρ.</>,
+            },
+            {
+              label: "Score",
+              equation: <>Score = τ<sub>O</sub> / τ<sub>mix</sub></>,
+              substitution: <>{fmt(mixing.oxygen_depletion_time_lab_s, 2)} / {fmt(mixing.theta_mix_lab, 2)}</>,
+              finalValue: <>{fmt(mixing.o2_mixing_ratio_lab, 3)}</>,
+            },
+          ]}
+          target={[
+            {
+              label: <>Oxygen uptake time τ<sub>O</sub></>,
+              equation: <>τ<sub>O</sub> = 3600 × C* × (DO / 100) / OUR</>,
+              substitution: <>3600 × {fmt(derived.c_star, 3)} × ({fmt(inputs.do_setpoint, 1)} / 100) / {fmt(derived.our_peak, 1)}</>,
+              finalValue: <>{fmt(mixing.oxygen_depletion_time_target_s, 2)} s</>,
+              note: <>C* is oxygen solubility at this scale; DO is the control-point set point.</>,
+            },
+            {
+              label: <>Mixing time τ<sub>mix</sub></>,
+              equation: <>τ<sub>mix</sub> = C<sub>R</sub>T<sup>2</sup> / (ε<sup>1/3</sup>d<sub>i</sub><sup>4/3</sup>)</>,
+              substitution: <>{RUSZKOWSKI_CONSTANT} × {fmt(derived.target_geometry.t_diameter, 3)}<sup>2</sup> / ({fmt(epsilonTarget, 3)}<sup>1/3</sup> × {fmt(derived.target_geometry.d_imp, 3)}<sup>4/3</sup>)</>,
+              finalValue: <>{fmt(mixing.theta_mix_target, 2)} s</>,
+              note: <>Ruszkowski correlation; ε = P/V / ρ.</>,
+            },
+            {
+              label: "Score",
+              equation: <>Score = τ<sub>O</sub> / τ<sub>mix</sub></>,
+              substitution: <>{fmt(mixing.oxygen_depletion_time_target_s, 2)} / {fmt(mixing.theta_mix_target, 2)}</>,
+              finalValue: <>{fmt(mixing.o2_mixing_ratio_target, 3)}</>,
+            },
+          ]}
+        />
       }
-      mitigation={<MitigationBlock domain="mixing" results={results} inputs={inputs} />}
     />
   );
 }
 
-function ShearDetail({ shear, derived, results, inputs, theme }: {
+function ShearDetail({ shear, derived, inputs, theme }: {
   shear: ShearRiskResult;
   derived: DerivedParameters;
-  results: PartialAssessmentResult;
   inputs: ProcessInputs;
   theme: "light" | "dark";
 }) {
@@ -722,6 +863,9 @@ function ShearDetail({ shear, derived, results, inputs, theme }: {
     { score: "critical", label: "Critical", max: 1 / 1.3 },
   ];
   const labMargin = shear.tip_speed_margin_lab ?? (shear.tip_speed_threshold / Math.max(shear.tip_speed_lab ?? 1e-9, 1e-9));
+  const tipSpeedLab = shear.tip_speed_lab ?? 0;
+  const labScore = scoreFromBands(labMargin, shearBands);
+  const targetScore = scoreFromBands(shear.tip_speed_margin, shearBands);
 
   return (
     <DetailScaffold
@@ -732,26 +876,63 @@ function ShearDetail({ shear, derived, results, inputs, theme }: {
         textNumerator: <>Tip speed threshold of microbe (m/s)</>,
         textDenominator: <>Tip speed of impeller (m/s)</>,
       }}
-      lab={{ score: scoreFromBands(labMargin, shearBands), value: labMargin }}
-      target={{ score: scoreFromBands(shear.tip_speed_margin, shearBands), value: shear.tip_speed_margin }}
+      lab={{ score: labScore, value: labMargin }}
+      target={{ score: targetScore, value: shear.tip_speed_margin }}
       bands={shearBands}
       higherIsSafer
       theme={theme}
       narrative={
-        <>
-          <MetricLine label="Tip speed threshold" value={<>{fmt(shear.tip_speed_threshold, 2)} m/s</>} tail="is microbe dependent." />
-          <MetricLine label="Tip speed of impeller" value={<>{fmt(shear.tip_speed, 2)} m/s</>} tail={<>is a function of <Highlight>impeller RPM ({fmt(shear.n_target * 60, 0)} rpm)</Highlight> and <Highlight>impeller diameter ({fmt(derived.target_geometry.d_imp, 3)} m)</Highlight>.</>} />
-        </>
+        <ScaleAnalysisGrid
+          labScore={labScore}
+          targetScore={targetScore}
+          theme={theme}
+          lab={[
+            {
+              label: <>Tip speed v<sub>tip</sub></>,
+              equation: <>v<sub>tip</sub> = πNd<sub>i</sub></>,
+              substitution: <>π × {fmt(shear.n_lab ?? 0, 2)} × {fmt(derived.lab_geometry.d_imp, 3)}</>,
+              finalValue: <>{fmt(tipSpeedLab, 2)} m/s</>,
+            },
+            {
+              label: <>Tip speed threshold v<sub>tip</sub><sup>threshold</sup></>,
+              finalValue: <>{fmt(shear.tip_speed_threshold, 2)} m/s</>,
+              note: "Microbe-dependent threshold.",
+            },
+            {
+              label: "Score",
+              equation: <>Score = v<sub>tip</sub><sup>threshold</sup> / v<sub>tip</sub><sup>impeller</sup></>,
+              substitution: <>{fmt(shear.tip_speed_threshold, 2)} / {fmt(tipSpeedLab, 2)}</>,
+              finalValue: <>{fmt(labMargin, 2)}</>,
+            },
+          ]}
+          target={[
+            {
+              label: <>Tip speed v<sub>tip</sub></>,
+              equation: <>v<sub>tip</sub> = πNd<sub>i</sub></>,
+              substitution: <>π × {fmt(shear.n_target, 2)} × {fmt(derived.target_geometry.d_imp, 3)}</>,
+              finalValue: <>{fmt(shear.tip_speed, 2)} m/s</>,
+            },
+            {
+              label: <>Tip speed threshold v<sub>tip</sub><sup>threshold</sup></>,
+              finalValue: <>{fmt(shear.tip_speed_threshold, 2)} m/s</>,
+              note: "Microbe-dependent threshold.",
+            },
+            {
+              label: "Score",
+              equation: <>Score = v<sub>tip</sub><sup>threshold</sup> / v<sub>tip</sub><sup>impeller</sup></>,
+              substitution: <>{fmt(shear.tip_speed_threshold, 2)} / {fmt(shear.tip_speed, 2)}</>,
+              finalValue: <>{fmt(shear.tip_speed_margin, 2)}</>,
+            },
+          ]}
+        />
       }
-      mitigation={<MitigationBlock domain="shear" results={results} inputs={inputs} />}
     />
   );
 }
 
-function Co2Detail({ co2, derived, results, inputs, theme }: {
+function Co2Detail({ co2, derived, inputs, theme }: {
   co2: Co2RiskResult;
   derived: DerivedParameters;
-  results: PartialAssessmentResult;
   inputs: ProcessInputs;
   theme: "light" | "dark";
 }) {
@@ -766,17 +947,51 @@ function Co2Detail({ co2, derived, results, inputs, theme }: {
   const rq = inputs.organism_species === "p_pastoris" ? RQ_DEFAULTS.p_pastoris_methanol
     : inputs.organism_species === "s_cerevisiae" ? RQ_DEFAULTS.s_cerevisiae_aerobic
     : RQ_DEFAULTS.bacteria_aerobic;
+  const labScore = scoreFromBands(labMargin, co2Bands);
+  const targetScore = scoreFromBands(targetMargin, co2Bands);
 
-  const narrative = !co2.activated ? (
-    <p className="text-[15px] leading-relaxed text-silver-300">
-      Detailed CO<sub>2</sub> accumulation check is currently not activated because biomass and OUR are below trigger thresholds, so this domain is currently low risk.
-    </p>
-  ) : (
-    <>
-      <MetricLine label="CO2 partial pressure threshold" value={<>{fmt(co2.pco2_critical ?? 0, 3)} bar</>} tail="is microbe dependent." />
-      <MetricLine label="CO2 partial pressure at the bottom of reactor" value={<>{fmt(co2.target?.pco2_bottom ?? co2.pco2_bottom ?? 0, 3)} bar</>} tail={<>is a function of <Highlight>OUR ({fmt(derived.our_peak, 1)} mmol/L/h)</Highlight>, the microbe's <Highlight>respiratory quotient ({fmt(rq, 2)})</Highlight>, and the <Highlight>height of the reactor ({fmt(derived.target_geometry.h_liquid, 2)} m)</Highlight>.</>} />
-    </>
-  );
+  const inactiveCo2Lines: CalculationLine[] = [
+    {
+      label: <>CO<sub>2</sub> partial pressure threshold</>,
+      finalValue: <>{fmt(co2.pco2_critical ?? 0, 3)} bar</>,
+      note: "Microbe-dependent threshold.",
+    },
+    {
+      label: "Score",
+      finalValue: <>∞</>,
+      note: "Detailed CO2 accumulation calculation is inactive below biomass/OUR trigger thresholds.",
+    },
+  ];
+  const labCo2 = co2.lab;
+  const targetCo2 = co2.target;
+  const co2Lines = (scale: NonNullable<typeof co2.lab> | undefined, margin: number): CalculationLine[] => {
+    if (!co2.activated || !scale) return inactiveCo2Lines;
+    return [
+      {
+        label: "Carbon dioxide evolution rate",
+        equation: <>CER = RQ × OUR</>,
+        substitution: <>{fmt(rq, 2)} × {fmt(derived.our_peak, 1)}</>,
+        finalValue: <>{fmt(scale.cer, 1)} mmol/L/h</>,
+      },
+      {
+        label: <>k<sub>L</sub>a<sub>CO₂</sub></>,
+        equation: <>k<sub>L</sub>a<sub>CO₂</sub> = k<sub>L</sub>a<sub>O₂</sub> × √(D<sub>CO₂</sub> / D<sub>O₂</sub>)</>,
+        substitution: <>{fmt(scale.kla_co2 / KLA_CO2_O2_RATIO, 1)} × √(D<sub>CO₂</sub> / D<sub>O₂</sub>) = {fmt(scale.kla_co2 / KLA_CO2_O2_RATIO, 1)} × {fmt(KLA_CO2_O2_RATIO, 2)}</>,
+        finalValue: <>{fmt(scale.kla_co2, 1)} h<sup>-1</sup></>,
+      },
+      {
+        label: <>CO<sub>2</sub> partial pressure threshold</>,
+        finalValue: <>{fmt(co2.pco2_critical ?? 0, 3)} bar</>,
+        note: "Microbe-dependent threshold.",
+      },
+      {
+        label: "Score",
+        equation: <>Score = P<sub>CO₂</sub><sup>threshold</sup> / P<sub>CO₂</sub><sup>bottom</sup></>,
+        substitution: <>{fmt(co2.pco2_critical ?? 0, 3)} / {fmt(scale.pco2_bottom, 3)}</>,
+        finalValue: <>{Number.isFinite(margin) ? fmt(margin, 2) : "∞"}</>,
+      },
+    ];
+  };
 
   return (
     <DetailScaffold
@@ -787,21 +1002,27 @@ function Co2Detail({ co2, derived, results, inputs, theme }: {
         textNumerator: <>CO<sub>2</sub> partial pressure threshold (bar)</>,
         textDenominator: <>CO<sub>2</sub> partial pressure at the bottom of reactor (bar)</>,
       }}
-      lab={{ score: scoreFromBands(labMargin, co2Bands), value: labMargin }}
-      target={{ score: scoreFromBands(targetMargin, co2Bands), value: targetMargin }}
+      lab={{ score: labScore, value: labMargin }}
+      target={{ score: targetScore, value: targetMargin }}
       bands={co2Bands}
       higherIsSafer
       theme={theme}
-      narrative={narrative}
-      mitigation={<MitigationBlock domain="co2" results={results} inputs={inputs} />}
+      narrative={
+        <ScaleAnalysisGrid
+          labScore={labScore}
+          targetScore={targetScore}
+          theme={theme}
+          lab={co2Lines(labCo2, labMargin)}
+          target={co2Lines(targetCo2, targetMargin)}
+        />
+      }
     />
   );
 }
 
-function HeatDetail({ heat, derived, results, inputs, theme }: {
+function HeatDetail({ heat, derived, inputs, theme }: {
   heat: HeatRiskResult;
   derived: DerivedParameters;
-  results: PartialAssessmentResult;
   inputs: ProcessInputs;
   theme: "light" | "dark";
 }) {
@@ -813,28 +1034,75 @@ function HeatDetail({ heat, derived, results, inputs, theme }: {
   ];
   const labMargin = heat.lab?.heat_transfer_margin ?? heat.heat_transfer_margin ?? 0;
   const targetMargin = heat.target?.heat_transfer_margin ?? heat.heat_transfer_margin ?? 0;
+  const labScore = scoreFromBands(labMargin, heatBands);
+  const targetScore = scoreFromBands(targetMargin, heatBands);
+  const targetHeat = heat.target ?? {
+    q_metabolic: heat.q_metabolic,
+    q_cool_max: heat.q_cool_max,
+    u_overall: heat.u_overall ?? 0,
+    a_jacket: heat.a_jacket,
+    dt_lm: heat.dt_lm,
+    heat_transfer_margin: targetMargin,
+    heat_ratio: heat.heat_ratio,
+    margin_score: heat.margin_score ?? targetScore,
+    score: targetScore,
+    t_cw_outlet: heat.t_cw_outlet ?? 0,
+    h_broth: heat.h_broth ?? 0,
+    h_jacket: heat.h_jacket ?? 0,
+    r_broth: heat.r_broth ?? 0,
+    r_wall: heat.r_wall ?? 0,
+    r_jacket: heat.r_jacket ?? 0,
+    r_total: heat.r_total ?? 0,
+    cooling_water_delta_t: heat.cooling_water_delta_t ?? 0,
+    jacket_re: heat.jacket_re ?? 0,
+    wall_material: heat.wall_material ?? "stainless_steel",
+  };
+  const heatLines = (scaleHeat: typeof targetHeat, margin: number): CalculationLine[] => [
+    {
+      label: <>Cooling capacity Q<sub>cooling</sub></>,
+      equation: <>Q<sub>cooling</sub> = U A ΔT<sub>LM</sub></>,
+      substitution: <>{fmt(scaleHeat.u_overall, 1)} × {fmt(scaleHeat.a_jacket, 2)} × {fmt(scaleHeat.dt_lm, 1)} / 1000</>,
+      finalValue: <>{fmt(scaleHeat.q_cool_max, 2)} kW</>,
+      note: <>U = 1 / (1/h<sub>i</sub> + R<sub>f,broth</sub> + δ<sub>wall</sub>/k<sub>wall</sub> + R<sub>f,jacket</sub> + 1/h<sub>o</sub>). h<sub>i</sub> uses Chilton-Drew (1944; Bondy and Lippa, 1983 constants by impeller). h<sub>o</sub> uses Dittus-Boelter (1930) with transitional/laminar fallbacks.</>,
+    },
+    {
+      label: <>Heat generated during fermentation Q<sub>metabolic</sub></>,
+      equation: <>Q<sub>metabolic</sub> = ΔH<sub>metabolic</sub> × OUR × V / 3600</>,
+      substitution: <>{fmt(METABOLIC_HEAT_FACTOR, 2)} × {fmt(derived.our_peak, 1)} × {fmt((scaleHeat.q_metabolic * 3600) / Math.max(METABOLIC_HEAT_FACTOR * derived.our_peak, 1e-9), 1)} / 3600</>,
+      finalValue: <>{fmt(scaleHeat.q_metabolic, 2)} kW</>,
+      note: <>ΔH<sub>metabolic</sub> = {fmt(METABOLIC_HEAT_FACTOR, 2)} kJ/mmol O<sub>2</sub>.</>,
+    },
+    {
+      label: "Score",
+      equation: <>Score = Q<sub>cooling</sub> / Q<sub>metabolic</sub></>,
+      substitution: <>{fmt(scaleHeat.q_cool_max, 2)} / {fmt(scaleHeat.q_metabolic, 2)}</>,
+      finalValue: <>{fmt(margin, 2)}</>,
+    },
+  ];
 
   return (
     <DetailScaffold
       question="Can the reactor effectively withdraw the metabolic heat generated during fermentation?"
       fraction={{
-        mathNumerator: <>UAΔT<sub>LMTD</sub></>,
+        mathNumerator: <>Q<sub>cooling</sub></>,
         mathDenominator: <>Q<sub>metabolic</sub></>,
         textNumerator: <>Reactor's capacity to withdraw heat (kW)</>,
         textDenominator: <>Heat generated during fermentation (kW)</>,
       }}
-      lab={{ score: scoreFromBands(labMargin, heatBands), value: labMargin }}
-      target={{ score: scoreFromBands(targetMargin, heatBands), value: targetMargin }}
+      lab={{ score: labScore, value: labMargin }}
+      target={{ score: targetScore, value: targetMargin }}
       bands={heatBands}
       higherIsSafer
       theme={theme}
       narrative={
-        <>
-          <MetricLine label="Reactor's capacity to withdraw heat" value={<>{fmt(heat.q_cool_max, 2)} kW</>} tail={<>depends on the <Highlight>overall heat transfer coefficient ({fmt(heat.u_overall ?? 0, 1)} W/m<sup>2</sup>·K)</Highlight>, <Highlight>area available for heat transfer ({fmt(heat.a_jacket, 2)} m<sup>2</sup>)</Highlight>, and <Highlight>log-mean temperature difference ({fmt(heat.dt_lm, 1)} °C)</Highlight>.</>} />
-          <MetricLine label="Heat generated during fermentation" value={<>{fmt(heat.q_metabolic, 2)} kW</>} tail={<>is a function of <Highlight>intrinsic heat generation of microbe ({METABOLIC_HEAT_FACTOR} kW per mmol/L/h per m<sup>3</sup>)</Highlight>, <Highlight>OUR ({fmt(derived.our_peak, 1)} mmol/L/h)</Highlight>, and <Highlight>volume of reactor ({fmt(derived.target_geometry.volume_m3, 3)} m<sup>3</sup>)</Highlight>.</>} />
-        </>
+        <ScaleAnalysisGrid
+          labScore={labScore}
+          targetScore={targetScore}
+          theme={theme}
+          lab={heatLines(heat.lab ?? targetHeat, labMargin)}
+          target={heatLines(targetHeat, targetMargin)}
+        />
       }
-      mitigation={<MitigationBlock domain="heat" results={results} inputs={inputs} />}
     />
   );
 }
@@ -1026,6 +1294,104 @@ const DOMAIN_LABELS: Record<RiskDomain, string> = {
   heat: "Heat Removal",
 };
 
+type ModificationId =
+  | "increase_impeller_rpm"
+  | "decrease_impeller_rpm"
+  | "increase_aeration_rate"
+  | "increase_oxygen_saturation"
+  | "increase_impeller_diameter"
+  | "decrease_impeller_diameter"
+  | "switch_to_rushton_impeller"
+  | "switch_to_pitched_blade_impeller"
+  | "add_internal_cooling_coils";
+
+const OXYGEN_LEVELS_DEFAULT = [20.9, 40, 60, 100] as const;
+
+function oxygenLevelsFromBaseline(baseline: number): number[] {
+  const levels = new Set<number>(OXYGEN_LEVELS_DEFAULT);
+  levels.add(Number(baseline.toFixed(1)));
+  return Array.from(levels).sort((a, b) => a - b);
+}
+
+interface ModificationDefinition {
+  id: ModificationId;
+  label: string;
+  domains: RiskDomain[];
+  section: "operational" | "design";
+}
+
+const MODIFICATIONS: ModificationDefinition[] = [
+  { id: "increase_impeller_rpm", label: "Increase impeller RPM", domains: ["otr", "mixing", "co2", "heat"], section: "operational" },
+  { id: "decrease_impeller_rpm", label: "Decrease impeller RPM", domains: ["shear"], section: "operational" },
+  { id: "increase_aeration_rate", label: "Increase aeration rate", domains: ["otr", "co2", "heat"], section: "operational" },
+  { id: "increase_oxygen_saturation", label: "Increase oxygen saturation", domains: ["otr"], section: "operational" },
+  { id: "increase_impeller_diameter", label: "Increase impeller diameter", domains: ["otr", "mixing", "co2", "heat"], section: "design" },
+  { id: "decrease_impeller_diameter", label: "Decrease impeller diameter", domains: ["shear"], section: "design" },
+  { id: "switch_to_rushton_impeller", label: "Switch to Rushton impeller", domains: ["otr", "mixing", "co2", "heat"], section: "design" },
+  { id: "switch_to_pitched_blade_impeller", label: "Switch to Pitched blade impeller", domains: ["otr", "mixing", "co2", "heat"], section: "design" },
+  { id: "add_internal_cooling_coils", label: "Add internal cooling coils", domains: ["heat"], section: "design" },
+];
+
+const CONFLICTS: Record<ModificationId, ModificationId[]> = {
+  increase_impeller_rpm: ["decrease_impeller_rpm"],
+  decrease_impeller_rpm: ["increase_impeller_rpm"],
+  increase_aeration_rate: [],
+  increase_oxygen_saturation: [],
+  increase_impeller_diameter: ["decrease_impeller_diameter"],
+  decrease_impeller_diameter: ["increase_impeller_diameter"],
+  switch_to_rushton_impeller: ["switch_to_pitched_blade_impeller"],
+  switch_to_pitched_blade_impeller: ["switch_to_rushton_impeller"],
+  add_internal_cooling_coils: [],
+};
+
+function applyModificationsWithOxygenLevel(
+  inputs: ProcessInputs,
+  active: Set<ModificationId>,
+  oxygenLevel: number | null,
+): ProcessInputs {
+  const limits = getScaleupOperatingRange(inputs.v_target);
+  const out: ProcessInputs = { ...inputs };
+
+  let dtTarget = out.dt_ratio_target ?? IMPELLER_CONSTANTS[out.impeller_type].d_t_ratio;
+
+  if (active.has("switch_to_rushton_impeller")) out.impeller_type = "rushton";
+  if (active.has("switch_to_pitched_blade_impeller")) out.impeller_type = "pitched_blade";
+  if (active.has("increase_impeller_rpm")) out.rpm = limits.max_rpm.max;
+  if (active.has("increase_aeration_rate")) out.vvm = limits.max_aeration_vvm.max;
+  if (oxygenLevel != null) out.o2_inlet = oxygenLevel;
+  if (active.has("increase_impeller_diameter")) dtTarget = Math.min(dtTarget + 0.1, 0.8);
+  if (active.has("decrease_impeller_diameter")) dtTarget = Math.max(dtTarget - 0.1, 0.1);
+
+  out.dt_ratio_target = dtTarget;
+
+  // Decrease RPM should lower target tip speed, not just lab RPM.
+  if (active.has("decrease_impeller_rpm")) {
+    const method = out.scaleup_criterion ?? "power_per_volume";
+    const currentTarget = buildReactorScaleConfigs(out, { method }).target.rpm;
+    const desiredTarget = Math.max(currentTarget - 50, limits.max_rpm.min);
+    if (desiredTarget < currentTarget - 1e-6) {
+      let lo = limits.max_rpm.min;
+      let hi = Math.max(out.rpm, lo);
+      for (let i = 0; i < 28; i++) {
+        const mid = (lo + hi) / 2;
+        const trial = { ...out, rpm: mid };
+        const targetMid = buildReactorScaleConfigs(trial, { method }).target.rpm;
+        if (targetMid > desiredTarget) hi = mid;
+        else lo = mid;
+      }
+      out.rpm = Math.max(lo, limits.max_rpm.min);
+    }
+  }
+  return out;
+}
+
+function heatScoreFromMargin(margin: number): RiskScore {
+  if (margin > 1 / 0.6) return "low";
+  if (margin > 1 / 0.85) return "moderate";
+  if (margin > 1.0) return "high";
+  return "critical";
+}
+
 // --- Compact domain card for horizontal row ---
 
 function DomainCard({
@@ -1033,6 +1399,7 @@ function DomainCard({
   score,
   scoreValue,
   thresholdText,
+  confidence,
   expanded,
   onClick,
   theme,
@@ -1041,11 +1408,15 @@ function DomainCard({
   score: RiskScore;
   scoreValue: string;
   thresholdText: string;
+  confidence: Confidence;
   expanded: boolean;
   onClick: () => void;
   theme: "light" | "dark";
 }) {
   const colour = riskColour(score, theme);
+  const confidenceColour = confidence === "directional"
+    ? riskColour("moderate", theme)
+    : riskColour("low", theme);
 
   return (
     <button
@@ -1110,8 +1481,16 @@ function DomainCard({
         <p className="relative text-[13px] font-mono text-silver-100 mb-1">
           Score = {scoreValue}
         </p>
-        <p className="relative text-[9px] text-silver-500 leading-none mb-3 whitespace-nowrap tracking-normal">
+        <p className="relative text-[9px] text-silver-500 leading-none mb-2 whitespace-nowrap tracking-normal">
           {thresholdText}
+        </p>
+        <p className="relative mb-3 flex items-center gap-1.5 text-[10px] font-medium text-silver-500">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: confidenceColour }}
+            aria-hidden="true"
+          />
+          <span>{confidenceLabel(confidence)}</span>
         </p>
 
         {/* Bottom row: expand */}
@@ -1137,22 +1516,256 @@ function DomainCard({
   );
 }
 
+function ReactorModificationsPanel({
+  domain,
+  selected,
+  onToggle,
+  canSelect,
+  oxygenLevel,
+  oxygenBaseline,
+  onOxygenStep,
+  impellerType,
+  theme,
+}: {
+  domain: RiskDomain;
+  selected: Set<ModificationId>;
+  onToggle: (id: ModificationId) => void;
+  canSelect: (id: ModificationId) => boolean;
+  oxygenLevel: number;
+  oxygenBaseline: number;
+  onOxygenStep: (dir: "left" | "right") => void;
+  impellerType: ProcessInputs["impeller_type"];
+  theme: "light" | "dark";
+}) {
+  const oxygenLevels = oxygenLevelsFromBaseline(oxygenBaseline);
+  const oxygenIdx = Math.max(0, oxygenLevels.findIndex((v) => Math.abs(v - oxygenLevel) < 1e-9));
+  const canLeft = oxygenIdx > 0;
+  const canRight = oxygenIdx < oxygenLevels.length - 1;
+  const oxygenIsModified = Math.abs(oxygenLevel - oxygenBaseline) > 1e-9;
+
+  const options = MODIFICATIONS.filter((m) => {
+    if (!m.domains.includes(domain)) return false;
+    if (m.id === "switch_to_rushton_impeller") {
+      return impellerType === "pitched_blade" || impellerType === "marine" || impellerType === "unknown";
+    }
+    if (m.id === "switch_to_pitched_blade_impeller") {
+      return impellerType === "marine" || impellerType === "unknown";
+    }
+    return true;
+  });
+  const operational = options.filter((m) => m.section === "operational");
+  const design = options.filter((m) => m.section === "design");
+
+  const section = (title: string, items: ModificationDefinition[]) => (
+    <div className="space-y-2.5">
+      <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-silver-500">{title}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {items.map((item) => {
+          const active = item.id === "increase_oxygen_saturation" ? oxygenIsModified : selected.has(item.id);
+          const enabled = item.id === "increase_oxygen_saturation" ? true : (active || canSelect(item.id));
+          const tone = riskColour(active ? "moderate" : "low", theme);
+          if (item.id === "increase_oxygen_saturation") {
+            return (
+              <div
+                key={item.id}
+                className="rounded-xl px-3.5 py-2.5 border transition-all duration-200"
+                style={{
+                  borderColor: active ? `${tone}99` : "var(--border-primary)",
+                  background: active ? `${tone}22` : "var(--bg-elevated)",
+                  color: active ? tone : "var(--text-secondary)",
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-medium">
+                    {item.label} ({Math.round(oxygenLevel)}%)
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onOxygenStep("left")}
+                      disabled={!canLeft}
+                      className={`w-6 h-6 rounded-md border text-[12px] leading-none ${
+                        canLeft ? "hover:brightness-110" : "opacity-40 cursor-not-allowed"
+                      }`}
+                      style={{ borderColor: "var(--border-primary)", background: "var(--bg-sunken)" }}
+                      aria-label="Decrease oxygen enrichment level"
+                    >
+                      ◀
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOxygenStep("right")}
+                      disabled={!canRight}
+                      className={`w-6 h-6 rounded-md border text-[12px] leading-none ${
+                        canRight ? "hover:brightness-110" : "opacity-40 cursor-not-allowed"
+                      }`}
+                      style={{ borderColor: "var(--border-primary)", background: "var(--bg-sunken)" }}
+                      aria-label="Increase oxygen enrichment level"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onToggle(item.id)}
+              disabled={!enabled}
+              className={`text-left rounded-xl px-3.5 py-2.5 border transition-all duration-200 ${
+                enabled ? "hover:brightness-110" : "opacity-45 cursor-not-allowed"
+              }`}
+              style={{
+                borderColor: active ? `${tone}99` : "var(--border-primary)",
+                background: active ? `${tone}22` : "var(--bg-elevated)",
+                color: active ? tone : "var(--text-secondary)",
+              }}
+            >
+              <span className="text-[13px] font-medium">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {section("Operational Modifications", operational)}
+      {section("Design Modifications", design)}
+    </div>
+  );
+}
+
 // --- Main dashboard component ---
 
 export default function ResultsDashboard({ data, isExample, onBackClick }: ResultsDashboardProps) {
   const { theme } = useTheme();
-  const [selectedDomain, setSelectedDomain] = useState<RiskDomain | null>(null);
+  const [selectedDomain, setSelectedDomain] = useState<RiskDomain | null>("otr");
   const [showProjections, setShowProjections] = useState(true);
+  const [selectedModifications, setSelectedModifications] = useState<Set<ModificationId>>(new Set());
 
-  const scaleProjection = useMemo(() => {
-    return computeScaleProjectionSummary(data.inputs, data.derived);
-  }, [data]);
+  const { inputs } = data;
+  const baselineOxygen = inputs.o2_inlet ?? 20.9;
+  const [oxygenLevel, setOxygenLevel] = useState<number>(baselineOxygen);
+  const baselineResults = useMemo(
+    () => runAssessment(inputs),
+    [inputs],
+  );
+  const baselineDerived = baselineResults.derived;
+  const modifiedInputs = useMemo(
+    () => applyModificationsWithOxygenLevel(
+      inputs,
+      selectedModifications,
+      Math.abs(oxygenLevel - baselineOxygen) > 1e-9 ? oxygenLevel : null,
+    ),
+    [inputs, selectedModifications, oxygenLevel, baselineOxygen],
+  );
+  const rawModifiedResults = useMemo(
+    () => runAssessment(modifiedInputs),
+    [modifiedInputs],
+  );
+  const modifiedResults = useMemo(() => {
+    if (!selectedModifications.has("add_internal_cooling_coils")) return rawModifiedResults;
+    const heat = rawModifiedResults.heat;
+    const target = heat.target ? { ...heat.target } : undefined;
+    const qCoolBase = target?.q_cool_max ?? heat.q_cool_max;
+    const qCool = qCoolBase * 1.5;
+    const qMet = heat.q_metabolic;
+    const margin = qMet > 0 ? qCool / qMet : Infinity;
+    const score = heatScoreFromMargin(margin);
+    if (target) {
+      target.q_cool_max = qCool;
+      target.heat_transfer_margin = margin;
+      target.heat_ratio = qCool > 0 ? qMet / qCool : Infinity;
+      target.margin_score = score;
+      target.score = score;
+    }
+    return {
+      ...rawModifiedResults,
+      heat: {
+        ...heat,
+        q_cool_max: qCool,
+        heat_transfer_margin: margin,
+        heat_ratio: qCool > 0 ? qMet / qCool : Infinity,
+        margin_score: score,
+        score,
+        target,
+      },
+    };
+  }, [rawModifiedResults, selectedModifications]);
 
-  const { inputs, derived, results } = data;
-  const { otr, mixing, shear, co2, heat } = results;
-  const bottleneck = results.primary_bottleneck;
+  const oxygenIsModified = Math.abs(oxygenLevel - baselineOxygen) > 1e-9;
+  const hasActiveModifications = selectedModifications.size > 0 || oxygenIsModified;
+
+  const activeResults = hasActiveModifications ? modifiedResults : baselineResults;
+  const otr = {
+    ...activeResults.otr,
+    score_lab: baselineResults.otr.score_lab ?? baselineResults.otr.score,
+    otr_capacity_lab: baselineResults.otr.otr_capacity_lab,
+    otr_our_ratio_lab: baselineResults.otr.otr_our_ratio_lab,
+    kla_lab: baselineResults.otr.kla_lab,
+  };
+  const mixing = {
+    ...activeResults.mixing,
+    score_lab: baselineResults.mixing.score_lab ?? baselineResults.mixing.score,
+    theta_mix_lab: baselineResults.mixing.theta_mix_lab,
+    o2_mixing_ratio_lab: baselineResults.mixing.o2_mixing_ratio_lab,
+    oxygen_depletion_time_lab_s: baselineResults.mixing.oxygen_depletion_time_lab_s,
+  };
+  const shear = {
+    ...activeResults.shear,
+    score_lab: baselineResults.shear.score_lab ?? baselineResults.shear.score,
+    tip_speed_lab: baselineResults.shear.tip_speed_lab,
+    tip_speed_margin_lab: baselineResults.shear.tip_speed_margin_lab,
+    tip_speed_ratio_lab: baselineResults.shear.tip_speed_ratio_lab,
+    margin_score_lab: baselineResults.shear.margin_score_lab,
+  };
+  const co2 = {
+    ...activeResults.co2,
+    lab: baselineResults.co2.lab,
+  };
+  const heat = {
+    ...activeResults.heat,
+    lab: baselineResults.heat.lab,
+  };
+  const derived = hasActiveModifications ? activeResults.derived : baselineDerived;
+  const detailDerived: DerivedParameters = hasActiveModifications ? {
+    ...derived,
+    lab_geometry: baselineDerived.lab_geometry,
+    n_rps: baselineDerived.n_rps,
+    p_ungassed: baselineDerived.p_ungassed,
+    p_gassed: baselineDerived.p_gassed,
+    p_total: baselineDerived.p_total,
+    pv_lab: baselineDerived.pv_lab,
+    q_gas_lab: baselineDerived.q_gas_lab,
+    vs_lab: baselineDerived.vs_lab,
+    c_star_lab: baselineDerived.c_star_lab,
+    c_l_lab: baselineDerived.c_l_lab,
+    df_lm_lab: baselineDerived.df_lm_lab,
+  } : baselineDerived;
+  const bottleneck = activeResults.primary_bottleneck;
   const scaleRatio = inputs.v_target / inputs.v_lab;
-  const vPilot = scaleProjection.pilotVolumeL;
+  const baselineScaleConfigs = useMemo(() => {
+    return buildReactorScaleConfigs(inputs, {
+      method: inputs.scaleup_criterion ?? "power_per_volume",
+    });
+  }, [inputs]);
+  const baselineScaleProjection = useMemo(() => {
+    return computeScaleProjectionSummary(inputs, baselineDerived);
+  }, [inputs, baselineDerived]);
+  const vPilot = baselineScaleProjection.pilotVolumeL;
+  const scaleupCriterion = inputs.scaleup_criterion ?? "power_per_volume";
+  const scaleupCriterionLabel = SCALEUP_CRITERION_LABELS[scaleupCriterion];
+  const scaleupConstraintWarnings = [
+    ...(baselineScaleConfigs.scaleup.clamped
+      ? [`Target operating conditions were constrained, so the target scale does not fully match the selected ${scaleupCriterionLabel} criterion.`]
+      : []),
+    ...baselineScaleConfigs.scaleup.flags,
+  ];
 
   const PV_SLIDER_OPTIONS = [
     { label: "0.25\u00D7", value: 0.25 },
@@ -1164,12 +1777,67 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
   const toggleDomain = (d: RiskDomain) =>
     setSelectedDomain(selectedDomain === d ? null : d);
 
+  const canSelectModification = (id: ModificationId): boolean => {
+    const current = applyModificationsWithOxygenLevel(
+      inputs,
+      selectedModifications,
+      Math.abs(oxygenLevel - baselineOxygen) > 1e-9 ? oxygenLevel : null,
+    );
+    const limits = getScaleupOperatingRange(inputs.v_target);
+    const dt = current.dt_ratio_target ?? IMPELLER_CONSTANTS[current.impeller_type].d_t_ratio;
+    switch (id) {
+      case "increase_impeller_rpm":
+        return current.rpm < limits.max_rpm.max;
+      case "decrease_impeller_rpm":
+        return buildReactorScaleConfigs(current, { method: current.scaleup_criterion ?? "power_per_volume" }).target.rpm > limits.max_rpm.min + 1e-6;
+      case "increase_aeration_rate":
+        return current.vvm < limits.max_aeration_vvm.max;
+      case "increase_oxygen_saturation":
+        return true;
+      case "increase_impeller_diameter":
+        return dt < 0.8;
+      case "decrease_impeller_diameter":
+        return dt > 0.1;
+      case "switch_to_rushton_impeller":
+        return current.impeller_type !== "rushton";
+      case "switch_to_pitched_blade_impeller":
+        return current.impeller_type === "marine" || current.impeller_type === "unknown";
+      case "add_internal_cooling_coils":
+        return true;
+      default:
+        return true;
+    }
+  };
+
+  const toggleModification = (id: ModificationId) => {
+    if (id === "increase_oxygen_saturation") return;
+    setSelectedModifications((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        return next;
+      }
+      CONFLICTS[id].forEach((conflictId) => next.delete(conflictId));
+      next.add(id);
+      return next;
+    });
+  };
+
+  const stepOxygenLevel = (dir: "left" | "right") => {
+    const levels = oxygenLevelsFromBaseline(baselineOxygen);
+    const idx = Math.max(0, levels.findIndex((v) => Math.abs(v - oxygenLevel) < 1e-9));
+    const nextIdx = dir === "left"
+      ? Math.max(0, idx - 1)
+      : Math.min(levels.length - 1, idx + 1);
+    setOxygenLevel(levels[nextIdx]);
+  };
+
   const labDomainScores: Record<RiskDomain, RiskScore> = {
-    otr: otr.score_lab ?? otr.score,
-    mixing: mixing.score_lab ?? mixing.score,
-    shear: shear.score_lab ?? shear.score,
-    co2: co2.lab?.score ?? co2.score,
-    heat: heat.lab?.score ?? heat.score,
+    otr: baselineResults.otr.score_lab ?? baselineResults.otr.score,
+    mixing: baselineResults.mixing.score_lab ?? baselineResults.mixing.score,
+    shear: baselineResults.shear.score_lab ?? baselineResults.shear.score,
+    co2: baselineResults.co2.lab?.score ?? baselineResults.co2.score,
+    heat: baselineResults.heat.lab?.score ?? baselineResults.heat.score,
   };
 
   const targetDomainScores: Record<RiskDomain, RiskScore> = {
@@ -1188,7 +1856,7 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
   const domainThresholds: Record<RiskDomain, string> = {
     otr: "C<.7 | H .7-1 | M 1-1.5 | L>=1.5",
     mixing: "C<=.1 | H .1-1 | M 1-10 | L>10",
-    shear: "C>=1.3 | H 1-1.3 | M .7-1 | L<.7",
+    shear: "C<=.77 | H .77-1 | M 1-1.43 | L>1.43",
     co2: "C<=.75 | H .75-1 | M 1-1.5 | L>1.5",
     heat: "C<=1 | H 1-1.18 | M 1.18-1.67 | L>1.67",
   };
@@ -1196,7 +1864,7 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
   const domainScoreValues: Record<RiskDomain, string> = {
     otr: fmt(otr.otr_our_ratio_target ?? otr.kla_ratio, 2),
     mixing: fmt(mixing.o2_mixing_ratio_target ?? 0, 3),
-    shear: fmt(shear.tip_speed_ratio, 2),
+    shear: fmt(shear.tip_speed_margin, 2),
     co2: Number.isFinite(co2.target?.pco2_margin ?? co2.pco2_margin ?? Infinity)
       ? fmt(co2.target?.pco2_margin ?? co2.pco2_margin ?? 0, 2)
       : "\u221E",
@@ -1210,6 +1878,26 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
     co2: targetDomainScores.co2,
     heat: targetDomainScores.heat,
   };
+  const domainConfidences: Record<RiskDomain, Confidence> = {
+    otr: otr.confidence,
+    mixing: mixing.confidence,
+    shear: shear.confidence,
+    co2: co2.confidence,
+    heat: heat.confidence,
+  };
+  const modificationsContent = selectedDomain ? (
+    <ReactorModificationsPanel
+      domain={selectedDomain}
+      selected={selectedModifications}
+      onToggle={toggleModification}
+      canSelect={canSelectModification}
+      oxygenLevel={oxygenLevel}
+      oxygenBaseline={baselineOxygen}
+      onOxygenStep={stepOxygenLevel}
+      impellerType={modifiedInputs.impeller_type}
+      theme={theme}
+    />
+  ) : null;
 
   return (
     <main className="min-h-screen relative pb-20 transition-colors duration-300" style={{ background: "var(--bg-base)" }}>
@@ -1273,6 +1961,10 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
 
       <div className="relative z-10 max-w-6xl mx-auto px-6 py-8 space-y-8">
 
+        <div>
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-silver-100">MOSCH Analysis</h1>
+        </div>
+
         {/* ===== SECTION 1: Radar Summary + Context ===== */}
         <div className="glass-panel p-8 flex flex-col items-center">
           <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 place-items-center">
@@ -1293,19 +1985,57 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
             </span>
           </div>
 
-          {/* Bottleneck callout */}
-          {bottleneck && (
-            <div className="animate-fade-in mt-8 w-full flex items-start gap-4 py-4 pl-5 pr-2">
-              <div className="min-w-0 flex-1">
+          <div className="w-full mt-8 divide-y divide-black/[0.08] dark:divide-white/[0.08]">
+            {/* Bottleneck callout */}
+            {bottleneck && (
+              <section className="animate-fade-in pb-5 pl-5 pr-2">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.1em] mb-2" style={{ color: compositeInfo.colour }}>
                   Primary Bottleneck
                 </p>
-                <p className="text-base font-semibold text-silver-100 leading-snug mb-3">
+                <p className="text-base text-silver-200 leading-relaxed">
                   {bottleneck.statement}
                 </p>
-              </div>
-            </div>
-          )}
+              </section>
+            )}
+
+            <section className={`${bottleneck ? "pt-5" : ""} pl-5 pr-2`}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] mb-2" style={{ color: compositeInfo.colour }}>
+                Scale-Up Constraints
+              </p>
+              <p className="text-base text-silver-200 leading-relaxed">
+                Scale-up performed according to {scaleupCriterionLabel} criterion. Impeller at target scale set to run at{" "}
+                <span className="font-mono font-semibold text-silver-100">{fmt(baselineScaleConfigs.target.rpm, 0)} RPM</span>{" "}
+                and aeration rate at target scale set to{" "}
+                <span className="font-mono font-semibold text-silver-100">{fmt(baselineScaleConfigs.target.vvm, 2)} vvm</span>.
+              </p>
+              {scaleupConstraintWarnings.length > 0 && (
+                <div className="mt-4 rounded-xl border px-4 py-3" style={{
+                  borderColor: `${riskColour("moderate", theme)}55`,
+                  background: `${riskColour("moderate", theme)}14`,
+                }}>
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="mt-0.5 w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-semibold"
+                      style={{ color: riskColour("moderate", theme), background: `${riskColour("moderate", theme)}20` }}
+                      aria-hidden="true"
+                    >
+                      !
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.08em]" style={{ color: riskColour("moderate", theme) }}>
+                        Operational constraint warning
+                      </p>
+                      {scaleupConstraintWarnings.map((warning, index) => (
+                        <p key={index} className="text-sm text-silver-300 leading-relaxed">
+                          {warning}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+          </div>
         </div>
 
         {/* ===== SECTION 3: Domain Cards Row ===== */}
@@ -1314,13 +2044,14 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
             Risk Domains
           </h2>
           <div className="grid grid-cols-5 gap-3">
-            {(["otr", "mixing", "shear", "co2", "heat"] as RiskDomain[]).map((d) => (
+            {DISPLAY_DOMAIN_ORDER.map((d) => (
               <DomainCard
                 key={d}
                 domain={d}
                 score={domainScores[d]}
                 scoreValue={domainScoreValues[d]}
                 thresholdText={domainThresholds[d]}
+                confidence={domainConfidences[d]}
                 expanded={selectedDomain === d}
                 onClick={() => toggleDomain(d)}
                 theme={theme}
@@ -1337,43 +2068,33 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
               background: `linear-gradient(165deg, var(--card-inner-light), var(--card-inner-dark))`,
             }}>
               {selectedDomain === "otr" && (
-                <OtrDetail otr={otr} derived={derived} inputs={inputs} results={results} theme={theme} />
+                <OtrDetail otr={otr} derived={detailDerived} inputs={modifiedInputs} theme={theme} />
               )}
               {selectedDomain === "mixing" && (
-                <MixingDetail mixing={mixing} derived={derived} inputs={inputs} results={results} theme={theme} />
+                <MixingDetail mixing={mixing} derived={detailDerived} inputs={modifiedInputs} theme={theme} />
               )}
               {selectedDomain === "shear" && (
-                <ShearDetail shear={shear} derived={derived} results={results} inputs={inputs} theme={theme} />
+                <ShearDetail shear={shear} derived={detailDerived} inputs={modifiedInputs} theme={theme} />
               )}
               {selectedDomain === "co2" && (
-                <Co2Detail co2={co2} derived={derived} inputs={inputs} results={results} theme={theme} />
+                <Co2Detail co2={co2} derived={detailDerived} inputs={modifiedInputs} theme={theme} />
               )}
               {selectedDomain === "heat" && (
-                <HeatDetail heat={heat} derived={derived} inputs={inputs} results={results} theme={theme} />
+                <HeatDetail heat={heat} derived={detailDerived} inputs={modifiedInputs} theme={theme} />
               )}
+              <div className="mt-5 glass-panel-sm p-4 border-black/[0.08] dark:border-white/[0.08] space-y-4">
+                <div>
+                  <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-silver-400">Target Scale What-If Analysis</p>
+                  <p className="text-[12px] text-silver-500 mt-1">
+                    Make modifications to your target scale reactor and see live changes in risk
+                  </p>
+                </div>
+                {modificationsContent}
+              </div>
             </div>
             </div>
           )}
         </div>
-
-        {/* ===== SECTION 4: Warnings/Flags ===== */}
-        {results.flags.length > 0 && (
-          <div>
-            <h3 className="text-[11px] font-semibold text-silver-500 uppercase tracking-[0.08em] mb-2">Warnings</h3>
-            <div className="space-y-1.5">
-              {results.flags.map((f, i) => (
-                <p key={i} className="text-xs text-risk-moderate glass-panel-sm border-risk-moderate/15 bg-risk-moderate/[0.04] px-3 py-2.5 flex items-start gap-2.5">
-                  {f.domain && (
-                    <span className="flex-shrink-0 inline-flex items-center gap-1 risk-badge risk-badge-moderate !text-[9px] !py-0.5 !px-2 uppercase">
-                      {f.domain}
-                    </span>
-                  )}
-                  <span className="leading-relaxed">{f.message}</span>
-                </p>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* ===== SECTION 5: Collapsible Projections ===== */}
         <div>
@@ -1415,69 +2136,69 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
                   <tbody className="font-mono text-silver-200">
                     <tr>
                       <td className="font-sans text-silver-400">Impeller RPM (rpm)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.rpm, 0)}</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.rpm, 0)}</td>
-                      <td className="text-right">{fmt(scaleProjection.production.rpm, 0)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.rpm, 0)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.rpm, 0)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.rpm, 0)}</td>
                     </tr>
                     <tr>
                       <td className="font-sans text-silver-400">Aeration rate (L/min, vvm)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.aerationLpm, 2)} ({fmt(scaleProjection.lab.vvm, 2)})</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.aerationLpm, 2)} ({fmt(scaleProjection.pilot.vvm, 2)})</td>
-                      <td className="text-right">{fmt(scaleProjection.production.aerationLpm, 2)} ({fmt(scaleProjection.production.vvm, 2)})</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.aerationLpm, 2)} ({fmt(baselineScaleProjection.lab.vvm, 2)})</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.aerationLpm, 2)} ({fmt(baselineScaleProjection.pilot.vvm, 2)})</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.aerationLpm, 2)} ({fmt(baselineScaleProjection.production.vvm, 2)})</td>
                     </tr>
                     <tr>
                       <td className="font-sans text-silver-400">Impeller diameter (m)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.impellerDiameterM, 3)}</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.impellerDiameterM, 3)}</td>
-                      <td className="text-right">{fmt(scaleProjection.production.impellerDiameterM, 3)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.impellerDiameterM, 3)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.impellerDiameterM, 3)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.impellerDiameterM, 3)}</td>
                     </tr>
                     <tr>
                       <td className="font-sans text-silver-400">Reactor height (m)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.reactorHeightM, 3)}</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.reactorHeightM, 3)}</td>
-                      <td className="text-right">{fmt(scaleProjection.production.reactorHeightM, 3)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.reactorHeightM, 3)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.reactorHeightM, 3)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.reactorHeightM, 3)}</td>
                     </tr>
                     <tr>
-                      <td className="font-sans text-silver-400">kLā range (h⁻¹)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.klaMin, 1)}-{fmt(scaleProjection.lab.klaMax, 1)}</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.klaMin, 1)}-{fmt(scaleProjection.pilot.klaMax, 1)}</td>
-                      <td className="text-right">{fmt(scaleProjection.production.klaMin, 1)}-{fmt(scaleProjection.production.klaMax, 1)}</td>
+                      <td className="font-sans text-silver-400">k<sub>L</sub>a̱ (h⁻¹)</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.klaMin, 1)}-{fmt(baselineScaleProjection.lab.klaMax, 1)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.klaMin, 1)}-{fmt(baselineScaleProjection.pilot.klaMax, 1)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.klaMin, 1)}-{fmt(baselineScaleProjection.production.klaMax, 1)}</td>
                     </tr>
                     <tr>
                       <td className="font-sans text-silver-400">Mixing time (s)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.mixingTimeS, 2)}</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.mixingTimeS, 2)}</td>
-                      <td className="text-right">{fmt(scaleProjection.production.mixingTimeS, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.mixingTimeS, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.mixingTimeS, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.mixingTimeS, 2)}</td>
                     </tr>
                     <tr>
                       <td className="font-sans text-silver-400">Tip speed (m/s)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.tipSpeedMS, 2)}</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.tipSpeedMS, 2)}</td>
-                      <td className="text-right">{fmt(scaleProjection.production.tipSpeedMS, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.tipSpeedMS, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.tipSpeedMS, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.tipSpeedMS, 2)}</td>
                     </tr>
                     <tr>
                       <td className="font-sans text-silver-400">P<sub>CO₂</sub> (bar)</td>
                       <td className="text-right">
-                        {scaleProjection.lab.pco2Bar != null ? fmt(scaleProjection.lab.pco2Bar, 3) : <span className="text-silver-600">&mdash;</span>}
+                        {baselineScaleProjection.lab.pco2Bar != null ? fmt(baselineScaleProjection.lab.pco2Bar, 3) : <span className="text-silver-600">&mdash;</span>}
                       </td>
                       <td className="text-right">
-                        {scaleProjection.pilot.pco2Bar != null ? fmt(scaleProjection.pilot.pco2Bar, 3) : <span className="text-silver-600">&mdash;</span>}
+                        {baselineScaleProjection.pilot.pco2Bar != null ? fmt(baselineScaleProjection.pilot.pco2Bar, 3) : <span className="text-silver-600">&mdash;</span>}
                       </td>
                       <td className="text-right">
-                        {scaleProjection.production.pco2Bar != null ? fmt(scaleProjection.production.pco2Bar, 3) : <span className="text-silver-600">&mdash;</span>}
+                        {baselineScaleProjection.production.pco2Bar != null ? fmt(baselineScaleProjection.production.pco2Bar, 3) : <span className="text-silver-600">&mdash;</span>}
                       </td>
                     </tr>
                     <tr>
                       <td className="font-sans text-silver-400">Metabolic heat (kW)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.metabolicHeatKW, 2)}</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.metabolicHeatKW, 2)}</td>
-                      <td className="text-right">{fmt(scaleProjection.production.metabolicHeatKW, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.metabolicHeatKW, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.metabolicHeatKW, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.metabolicHeatKW, 2)}</td>
                     </tr>
                     <tr>
-                      <td className="font-sans text-silver-400">Reactor heat capacity (kW)</td>
-                      <td className="text-right">{fmt(scaleProjection.lab.reactorHeatCapacityKW, 2)}</td>
-                      <td className="text-right">{fmt(scaleProjection.pilot.reactorHeatCapacityKW, 2)}</td>
-                      <td className="text-right">{fmt(scaleProjection.production.reactorHeatCapacityKW, 2)}</td>
+                      <td className="font-sans text-silver-400">Cooling capacity (kW)</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.lab.reactorHeatCapacityKW, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.pilot.reactorHeatCapacityKW, 2)}</td>
+                      <td className="text-right">{fmt(baselineScaleProjection.production.reactorHeatCapacityKW, 2)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1540,7 +2261,7 @@ export default function ResultsDashboard({ data, isExample, onBackClick }: Resul
                 </span>
               </div>
             ) : (
-              <GeneratePdfButton inputs={inputs} derived={derived} results={results} />
+              <GeneratePdfButton inputs={inputs} derived={baselineDerived} results={baselineResults} />
             )}
           </div>
         </div>

@@ -701,11 +701,13 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
       document.getElementById(firstKey)?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
+    setSubmitted(false);
     setDirection("forward");
     setCurrentStep((s) => Math.min(s + 1, totalSteps - 1));
   }, [currentStep, steps, totalSteps, validateStep]);
 
   const goBack = useCallback(() => {
+    setSubmitted(false);
     setDirection("back");
     setCurrentStep((s) => Math.max(s - 1, 0));
   }, []);
@@ -714,12 +716,14 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
     (index: number) => {
       if (index > currentStep + 1) return;
       if (index < currentStep) {
+        setSubmitted(false);
         setDirection("back");
       } else {
         const stepId = steps[currentStep].id;
         const errs = validateStep(stepId);
         setErrors(errs);
         if (Object.keys(errs).length > 0) return;
+        setSubmitted(false);
         setDirection("forward");
       }
       setCurrentStep(index);
@@ -729,9 +733,8 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
 
   // --- Submit ---
 
-  const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
+  const handleRunAssessment = useCallback(
+    () => {
       setSubmitted(true);
       const errs = validate();
       setErrors(errs);
@@ -810,8 +813,11 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
   const speciesOptions = form.organism_class === "bacteria" ? BACTERIA_SPECIES
     : form.organism_class === "yeast" ? YEAST_SPECIES : [];
 
-  const fieldError = (key: string) =>
-    errors[key] ? <p className="text-risk-critical text-xs mt-1.5">{errors[key]}</p> : null;
+  const fieldError = (key: string) => {
+    // Show this required-field error only after explicit final submission attempt.
+    if (key === "biomass_density_category" && (!submitted || !isLastStep)) return null;
+    return errors[key] ? <p className="text-risk-critical text-xs mt-1.5">{errors[key]}</p> : null;
+  };
 
   const inputCls = (key: string, extra = "") =>
     `glass-input block w-full px-3.5 py-2.5 text-sm ${
@@ -848,7 +854,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className={`max-w-3xl mx-auto ${organismAccent}`}>
+    <form onSubmit={(e) => e.preventDefault()} noValidate className={`max-w-3xl mx-auto ${organismAccent}`}>
       {/* Step progress indicator */}
       <div className="mb-6">
         <div className="flex items-center gap-1">
@@ -1108,17 +1114,6 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                 <p className="text-[11px] text-silver-600 -mt-1">
                   Describe your <strong className="text-silver-400">lab vessel</strong>, then set target-scale geometry. Target H/D, D/T, and impeller count start synchronized to lab by default.
                 </p>
-
-                {/* Vessel model */}
-                <div>
-                  <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
-                    Lab vessel brand/model (optional)
-                  </label>
-                  <select value={form.vessel_model} onChange={(e) => set("vessel_model", e.target.value)}
-                    className="glass-select w-full px-3.5 py-2.5 text-sm">
-                    <option value="">Generic STR</option>
-                  </select>
-                </div>
 
                 {/* Impeller type */}
                 <div>
@@ -1547,7 +1542,8 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
             <div className="flex items-center gap-3">
               {isLastStep ? (
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleRunAssessment}
                   disabled={coolingWaterOutletCheck.active && coolingWaterOutletCheck.blocked}
                   className={`btn-primary px-6 py-2.5 text-sm font-medium flex items-center gap-2 ${
                     coolingWaterOutletCheck.active && coolingWaterOutletCheck.blocked

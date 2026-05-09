@@ -14,7 +14,7 @@ import type { OverallUResult }  from "./u_overall";
 
 export interface HeatCapacityInputs {
   organism:       OrganismSpecies;
-  our_mmol_Lh:    number;  // mmol/L/h — OUR from growth module
+  our_mmol_Lh:    number;  // mmol/L/h — OUR from measured/estimated assessment input path
   volume_litres:  number;  // L        — culture volume
   t_process:      number;  // °C
   t_cw_in:        number;  // °C

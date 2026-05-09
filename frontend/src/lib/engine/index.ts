@@ -17,7 +17,6 @@ import type {
 
 import { runAllDerivations } from "./derivations/index";
 import { buildReactorScaleConfigs } from "./reactor_configs";
-import { calculateGrowthOxygenRisk } from "./oxygen/growth_oxygen_risk";
 import { calculateOtrRisk }   from "./oxygen/otr_risk";
 import { calculateMixingRisk } from "./mixing/mixing_risk";
 import { calculateShearRisk }  from "./shear/shear_risk";
@@ -49,7 +48,8 @@ export type {
 } from "./derivations/index";
 
 export { calculateOtrRisk }    from "./oxygen/otr_risk";
-export { calculateGrowthOxygenRisk, scoreMuRatio } from "./oxygen/growth_oxygen_risk";
+// Legacy growth-kinetics oxygen risk path archived from active assessment flow.
+// export { calculateGrowthOxygenRisk, scoreMuRatio } from "./oxygen/growth_oxygen_risk";
 export { calculateMixingRisk } from "./mixing/mixing_risk";
 export { calculateShearRisk }  from "./shear/shear_risk";
 export { calculateCo2Risk }    from "./co2/co2_risk";
@@ -188,8 +188,30 @@ export function runAssessment(inputs: ProcessInputs): PartialAssessmentResult {
   const reactorConfigs = buildReactorScaleConfigs(inputs, {
     method: inputs.scaleup_criterion ?? "power_per_volume",
   });
-  const growthOxygen = calculateGrowthOxygenRisk(inputs, reactorConfigs);
-  flags.push(...growthOxygen.flags);
+  // Growth-kinetics oxygen risk is intentionally not part of the active flow.
+  const growthOxygen: GrowthOxygenRiskResult = {
+    score: "low",
+    lab: {
+      score: "low",
+      mu_o2: 0,
+      mu_substrate: 0,
+      mu_ratio: Infinity,
+      limiting: "substrate",
+      confidence: "directional",
+      driver: "Archived legacy growth-kinetics path.",
+    },
+    target: {
+      score: "low",
+      mu_o2: 0,
+      mu_substrate: 0,
+      mu_ratio: Infinity,
+      limiting: "substrate",
+      confidence: "directional",
+      driver: "Archived legacy growth-kinetics path.",
+    },
+    confidence: "directional",
+    driver: "Archived legacy growth-kinetics path; oxygen risk is based on OTR/OUR.",
+  };
 
   const otr     = calculateOtrRisk(inputs, derived, reactorConfigs);
   flags.push(...otr.flags);
@@ -207,7 +229,7 @@ export function runAssessment(inputs: ProcessInputs): PartialAssessmentResult {
   flags.push(...heat.flags);
 
   const partialResult: PartialAssessmentResult = {
-    growth_oxygen:      growthOxygen.result,
+    growth_oxygen:      growthOxygen,
     otr:                otr.result,
     mixing:             mixing.result,
     shear:              shear.result,

@@ -108,8 +108,8 @@ export default function LandingPage() {
         {/* Hero */}
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-8 pb-6">
           <div className="animate-fade-in">
-            <p className="text-center text-[11px] font-medium uppercase tracking-[0.2em] text-silver-400 mb-6">
-              Fermentation Scale-Up Risk Predictor
+            <p className="text-center text-[24px] font-medium uppercase tracking-[0.2em] text-silver-400 mb-6">
+              Torch
             </p>
             <h1 className="max-w-3xl text-center text-5xl font-serif leading-[1.15] text-[var(--text-heading)]">
               See where your fermentation process
@@ -118,8 +118,7 @@ export default function LandingPage() {
             <p className="mt-5 max-w-2xl mx-auto text-center text-sm leading-relaxed text-[var(--text-secondary)]">
               Enter your lab-scale process parameters. Get a structured
               engineering risk assessment across oxygen transfer, mixing, shear,
-              CO&#x2082; accumulation, and heat removal &mdash; with full calculation
-              transparency.
+              CO&#x2082; accumulation, and heat removal &mdash; with full methodological transparency.
             </p>
           </div>
 

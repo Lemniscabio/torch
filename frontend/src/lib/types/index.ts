@@ -185,6 +185,10 @@ export interface OtrRiskResult {
   pv_aggressive: number;                    // W/m³
   correlations_used?: string[];
   kla_std?: number;
+  kla_lab_min?: number;                     // lab-scale ensemble min kLa (h^-1)
+  kla_lab_max?: number;                     // lab-scale ensemble max kLa (h^-1)
+  kla_target_min?: number;                  // target-scale ensemble min kLa (h^-1)
+  kla_target_max?: number;                  // target-scale ensemble max kLa (h^-1)
   kla_min?: number;
   kla_max?: number;
   kla_components?: Record<string, number>;

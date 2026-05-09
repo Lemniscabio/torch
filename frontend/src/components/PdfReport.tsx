@@ -6,8 +6,12 @@ import {
   Text,
   View,
   StyleSheet,
+  Svg,
+  Polygon,
+  Circle,
+  Line,
 } from "@react-pdf/renderer";
-import type { ProcessInputs, DerivedParameters, RiskScore, Confidence } from "@/lib/types";
+import type { ProcessInputs, DerivedParameters, RiskScore, Confidence, RiskDomain } from "@/lib/types";
 import type { PartialAssessmentResult } from "@/lib/engine";
 import {
   RISK_COLOURS,
@@ -25,8 +29,11 @@ import {
   VANT_RIET_COALESCING_PV_EXPONENT,
   VANT_RIET_COALESCING_VS_EXPONENT,
 } from "@/lib/constants";
-import { deriveVesselGeometry, deriveGasVelocity } from "@/lib/engine";
+import { deriveVesselGeometry, deriveGasVelocity, buildReactorScaleConfigs } from "@/lib/engine";
 import { deriveOxygenSolubility } from "@/lib/engine/derivations";
+import type { ReactorScaleConfig } from "@/lib/engine/reactor_configs";
+import { buildOperatingPoint, computeKlaEnsemble } from "@/lib/engine/oxygen/kla_achievable";
+import { runHeatCapacityCheck } from "@/lib/engine/heat/heat_capacity";
 
 // --- Constants ---
 
@@ -1040,6 +1047,622 @@ function ReliabilityStatement({
   );
 }
 
+// --- New baseline report helpers ---
+
+const DISPLAY_DOMAIN_ORDER: RiskDomain[] = ["mixing", "otr", "shear", "co2", "heat"];
+
+const SCALEUP_CRITERION_LABELS: Record<NonNullable<ProcessInputs["scaleup_criterion"]>, string> = {
+  power_per_volume: "P/V",
+  kla: "kLa",
+  shear: "tip speed",
+};
+
+const CONFIDENCE_DOT: Record<Confidence, string> = {
+  high_confidence: RISK_COLOURS.low,
+  reliable: RISK_COLOURS.low,
+  directional: RISK_COLOURS.moderate,
+};
+
+interface PdfProjectionScaleSummary {
+  volumeL: number;
+  rpm: number;
+  aerationLpm: number;
+  vvm: number;
+  impellerDiameterM: number;
+  reactorHeightM: number;
+  klaMin: number;
+  klaMax: number;
+  mixingTimeS: number;
+  tipSpeedMS: number;
+  pco2Bar: number | null;
+  metabolicHeatKW: number;
+  reactorHeatCapacityKW: number;
+}
+
+interface PdfScaleProjectionSummary {
+  lab: PdfProjectionScaleSummary;
+  pilot: PdfProjectionScaleSummary;
+  production: PdfProjectionScaleSummary;
+  pilotVolumeL: number;
+}
+
+const DOMAIN_SHORT_LABELS: Record<RiskDomain, string> = {
+  mixing: "Mixing",
+  otr: "OTR",
+  shear: "Shear",
+  co2: "CO2",
+  heat: "Heat",
+};
+
+const DOMAIN_FULL_LABELS: Record<RiskDomain, string> = {
+  mixing: "Mixing Time",
+  otr: "Oxygen Transfer",
+  shear: "Shear Stress",
+  co2: "CO2 Accumulation",
+  heat: "Heat Removal",
+};
+
+const Y_CO2_IN = 4e-4;
+const MOLAR_VOL_STP_L_PER_MOL = 22.4;
+
+function resolveRqPdf(species: ProcessInputs["organism_species"]): number {
+  if (species === "p_pastoris") return RQ_DEFAULTS.p_pastoris_methanol;
+  if (species === "s_cerevisiae") return RQ_DEFAULTS.s_cerevisiae_aerobic;
+  return RQ_DEFAULTS.bacteria_aerobic;
+}
+
+function scoreSeverity(score: RiskScore): number {
+  return { low: 0, moderate: 1, high: 2, critical: 3 }[score];
+}
+
+function radarRadius(score: RiskScore): number {
+  switch (score) {
+    case "low": return 1.0;
+    case "moderate": return 0.75;
+    case "high": return 0.5;
+    case "critical": return 0.25;
+  }
+}
+
+function labScores(results: PartialAssessmentResult): Record<RiskDomain, RiskScore> {
+  return {
+    mixing: results.mixing.score_lab ?? results.mixing.score,
+    otr: results.otr.score_lab ?? results.otr.score,
+    shear: results.shear.score_lab ?? results.shear.score,
+    co2: results.co2.lab?.score ?? results.co2.score,
+    heat: results.heat.lab?.score ?? results.heat.score,
+  };
+}
+
+function targetScores(results: PartialAssessmentResult): Record<RiskDomain, RiskScore> {
+  return {
+    mixing: results.mixing.score_target ?? results.mixing.score,
+    otr: results.otr.score_target ?? results.otr.score,
+    shear: results.shear.score_target ?? results.shear.score,
+    co2: results.co2.target?.score ?? results.co2.score,
+    heat: results.heat.target?.score ?? results.heat.score,
+  };
+}
+
+function scoreValue(domain: RiskDomain, results: PartialAssessmentResult, scale: "lab" | "target"): string {
+  const { otr, mixing, shear, co2, heat } = results;
+  if (domain === "otr") return fmt(scale === "lab" ? (otr.otr_our_ratio_lab ?? 0) : (otr.otr_our_ratio_target ?? otr.kla_ratio), 2);
+  if (domain === "mixing") return fmt(scale === "lab" ? mixing.o2_mixing_ratio_lab : mixing.o2_mixing_ratio_target, 3);
+  if (domain === "shear") return fmt(scale === "lab" ? (shear.tip_speed_margin_lab ?? 0) : shear.tip_speed_margin, 2);
+  if (domain === "co2") {
+    const value = scale === "lab" ? co2.lab?.pco2_margin : co2.target?.pco2_margin ?? co2.pco2_margin;
+    return Number.isFinite(value ?? Infinity) ? fmt(value ?? 0, 2) : "∞";
+  }
+  return fmt(scale === "lab" ? (heat.lab?.heat_transfer_margin ?? 0) : (heat.target?.heat_transfer_margin ?? heat.heat_transfer_margin ?? 0), 2);
+}
+
+function confidenceForDomain(domain: RiskDomain, results: PartialAssessmentResult): Confidence {
+  if (domain === "otr") return results.otr.confidence;
+  if (domain === "mixing") return results.mixing.confidence;
+  if (domain === "shear") return results.shear.confidence;
+  if (domain === "co2") return results.co2.confidence;
+  return results.heat.confidence;
+}
+
+function calculatePdfKlaRange(scale: ReactorScaleConfig, inputs: ProcessInputs, derived: DerivedParameters): { min: number; max: number } {
+  const op = buildOperatingPoint({
+    D_T: scale.geometry.t_diameter,
+    H_L: scale.geometry.h_liquid,
+    V_L: scale.geometry.volume_m3,
+    d_i: scale.geometry.d_imp,
+    impeller_type: inputs.impeller_type,
+    n_imp: scale.n_impellers,
+    N_rps: scale.rpm / 60,
+    Q_gas: scale.gas.q_gas,
+    v_s: scale.gas.vs,
+    mu_L: derived.mu,
+  });
+  const ensemble = computeKlaEnsemble(op, scale.power_w, derived.biomass_cdw);
+  return { min: ensemble.min, max: ensemble.max };
+}
+
+function calculatePdfMixingTime(scale: ReactorScaleConfig): number {
+  const epsilon = scale.pv_w_m3 / RHO;
+  return RUSZKOWSKI_CONSTANT * Math.pow(scale.geometry.t_diameter, 2) /
+    (Math.pow(epsilon, 1 / 3) * Math.pow(scale.geometry.d_imp, 4 / 3));
+}
+
+function calculatePdfPco2(scale: ReactorScaleConfig, inputs: ProcessInputs, derived: DerivedParameters): number | null {
+  const activated = derived.biomass_cdw > CO2_BIOMASS_THRESHOLD || derived.our_peak > CO2_OUR_THRESHOLD;
+  if (!activated) return null;
+
+  const cer = resolveRqPdf(inputs.organism_species) * derived.our_peak;
+  const klaCo2 = KLA_CO2_O2_RATIO * scale.kla_h;
+  const vLiquidL = scale.geometry.volume_m3 * 1000;
+  const qGasNlH = scale.gas.q_gas * 1000 * 3600;
+  const nDotGasMol = qGasNlH / MOLAR_VOL_STP_L_PER_MOL;
+  const cerMolH = (cer / 1000) * vLiquidL;
+  const yCo2Out = Math.min(Y_CO2_IN + cerMolH / Math.max(nDotGasMol, 1e-9), 0.20);
+  const pTotalBar = (ATMOSPHERIC_PRESSURE_PA + (RHO * G * scale.geometry.h_liquid) / 2) / 1e5;
+  const pco2GasIn = Y_CO2_IN * 1.01325;
+  const pco2GasOut = yCo2Out * pTotalBar;
+  const pco2GasAvg = Math.abs(pco2GasOut - pco2GasIn) < 1e-12
+    ? pco2GasOut
+    : (pco2GasOut - pco2GasIn) / Math.log(pco2GasOut / pco2GasIn);
+  const pco2BulkAtm = (pco2GasAvg / 1.01325) + (cer / 1000) / (Math.max(klaCo2, 1e-9) * H_CO2);
+  const pco2Bulk = pco2BulkAtm * 1.01325;
+  const dpHydro = RHO * G * scale.geometry.h_liquid;
+  return pco2Bulk * (ATMOSPHERIC_PRESSURE_PA + dpHydro) / ATMOSPHERIC_PRESSURE_PA;
+}
+
+function summarizePdfScale(scale: ReactorScaleConfig, inputs: ProcessInputs, derived: DerivedParameters): PdfProjectionScaleSummary {
+  const kla = calculatePdfKlaRange(scale, inputs, derived);
+  const heat = runHeatCapacityCheck({
+    organism: inputs.organism_species,
+    our_mmol_Lh: derived.our_peak,
+    volume_litres: scale.volume_litres,
+    t_process: inputs.temperature,
+    t_cw_in: inputs.t_cw_inlet,
+    flowrate_lpm: inputs.cooling_water_flowrate_lpm ?? 30,
+    D_T: scale.geometry.t_diameter,
+    H_L: scale.geometry.h_liquid,
+    d_imp: scale.geometry.d_imp,
+    N_rps: scale.rpm / 60,
+    mu: derived.mu,
+    impeller_type: inputs.impeller_type,
+  });
+
+  return {
+    volumeL: scale.volume_litres,
+    rpm: scale.rpm,
+    aerationLpm: scale.gas.q_gas * 1000 * 60,
+    vvm: scale.vvm,
+    impellerDiameterM: scale.geometry.d_imp,
+    reactorHeightM: scale.geometry.h_liquid,
+    klaMin: kla.min,
+    klaMax: kla.max,
+    mixingTimeS: calculatePdfMixingTime(scale),
+    tipSpeedMS: scale.tip_speed_m_s,
+    pco2Bar: calculatePdfPco2(scale, inputs, derived),
+    metabolicHeatKW: heat.Q_metabolic_kW,
+    reactorHeatCapacityKW: heat.Q_available_kW,
+  };
+}
+
+function computePdfScaleProjection(inputs: ProcessInputs, derived: DerivedParameters): PdfScaleProjectionSummary {
+  const method = inputs.scaleup_criterion ?? "power_per_volume";
+  const pilotVolumeL = pilotVolume(inputs.v_lab, inputs.v_target);
+  const base = buildReactorScaleConfigs(inputs, { method });
+  const pilotInputs: ProcessInputs = { ...inputs, v_target: pilotVolumeL };
+  const pilot = buildReactorScaleConfigs(pilotInputs, { method });
+  return {
+    lab: summarizePdfScale(base.lab, inputs, derived),
+    pilot: summarizePdfScale(pilot.target, inputs, derived),
+    production: summarizePdfScale(base.target, inputs, derived),
+    pilotVolumeL,
+  };
+}
+
+function scaleupWarnings(inputs: ProcessInputs): string[] {
+  const method = inputs.scaleup_criterion ?? "power_per_volume";
+  const configs = buildReactorScaleConfigs(inputs, { method });
+  return [
+    ...(configs.scaleup.clamped
+      ? [`Target operating conditions were constrained, so target scale does not fully match the selected ${SCALEUP_CRITERION_LABELS[method]} criterion.`]
+      : []),
+    ...configs.scaleup.flags,
+  ];
+}
+
+function PdfRadarChart({ title, scores }: { title: string; scores: Record<RiskDomain, RiskScore> }) {
+  const size = 180;
+  const cx = size / 2;
+  const cy = size / 2;
+  const maxR = 55;
+  const labelR = 76;
+  const points = DISPLAY_DOMAIN_ORDER.map((domain, index) => {
+    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / DISPLAY_DOMAIN_ORDER.length;
+    return {
+      domain,
+      angle,
+      x: cx + maxR * Math.cos(angle),
+      y: cy + maxR * Math.sin(angle),
+      lx: cx + labelR * Math.cos(angle),
+      ly: cy + labelR * Math.sin(angle),
+    };
+  });
+  const ring = (r: number) => points.map((p) => `${cx + maxR * r * Math.cos(p.angle)},${cy + maxR * r * Math.sin(p.angle)}`).join(" ");
+  const dataPoints = points.map((p) => {
+    const r = maxR * radarRadius(scores[p.domain]);
+    return { domain: p.domain, x: cx + r * Math.cos(p.angle), y: cy + r * Math.sin(p.angle) };
+  });
+  const data = dataPoints.map((p) => `${p.x},${p.y}`).join(" ");
+  const worst = DISPLAY_DOMAIN_ORDER.reduce<RiskScore>((acc, domain) => scoreSeverity(scores[domain]) > scoreSeverity(acc) ? scores[domain] : acc, "low");
+
+  return (
+    <View style={{ width: "48%", alignItems: "center" }}>
+      <Text style={[s.subsectionTitle, { marginTop: 0 }]}>{title}</Text>
+      <Svg width={size} height={size}>
+        {[0.25, 0.5, 0.75, 1].map((r) => (
+          <Polygon
+            key={r}
+            points={ring(r)}
+            fill={r === 1 ? "#F7FAFC" : "none"}
+            stroke={r === 1 ? "#B8C7D6" : "#D4DEE8"}
+            strokeWidth={r === 1 ? 1.1 : 0.9}
+          />
+        ))}
+        {points.map((p) => (
+          <Line key={p.domain} x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="#C7D3DF" strokeWidth={0.8} />
+        ))}
+        <Polygon points={data} fill={RISK_COLOURS[worst]} fillOpacity={0.24} stroke={RISK_COLOURS[worst]} strokeWidth={1.5} />
+        {dataPoints.map((p) => (
+          <Circle key={p.domain} cx={p.x} cy={p.y} r={2.5} fill={RISK_COLOURS[scores[p.domain]]} />
+        ))}
+        {points.map((p) => (
+          <Text
+            key={`${p.domain}-label`}
+            x={p.lx}
+            y={p.ly}
+            textAnchor={Math.abs(p.lx - cx) < 5 ? "middle" : p.lx > cx ? "start" : "end"}
+            style={{ fontSize: 7, fill: NAVY, fontFamily: "Helvetica-Bold" }}
+          >
+            {DOMAIN_SHORT_LABELS[p.domain]}
+          </Text>
+        ))}
+      </Svg>
+      <Text style={{ fontSize: 7, color: "#666666" }}>Outer ring: low risk. Inner ring: critical risk.</Text>
+    </View>
+  );
+}
+
+function PdfRiskSlider({ score, value }: { score: RiskScore; value: string }) {
+  return (
+    <View>
+      <View style={{ flexDirection: "row", height: 8, marginBottom: 2 }}>
+        {(["critical", "high", "moderate", "low"] as RiskScore[]).map((s0) => (
+          <View key={s0} style={{
+            flex: 1,
+            backgroundColor: RISK_COLOURS[s0],
+            opacity: s0 === score ? 1 : 0.35,
+            borderWidth: s0 === score ? 1 : 0,
+            borderColor: "#333333",
+          }} />
+        ))}
+      </View>
+      <Text style={{ fontSize: 7, color: "#555555" }}>Score {value} · {riskLabel(score)}</Text>
+    </View>
+  );
+}
+
+function PdfInfoBox({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={{ backgroundColor: "#F0F4F8", borderRadius: 4, padding: 9, marginBottom: 10 }}>
+      <Text style={[s.subsectionTitle, { marginTop: 0 }]}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function InputTable({ title, rows }: { title: string; rows: { label: string; value: string }[] }) {
+  return (
+    <View style={{ width: "48%", marginBottom: 10 }}>
+      <Text style={s.subsectionTitle}>{title}</Text>
+      <View style={s.paramTable}>
+        {rows.map((row, index) => (
+          <View key={index} style={s.paramTableRow}>
+            <Text style={s.paramTableLabel}>{row.label}</Text>
+            <Text style={s.paramTableValue}>{row.value}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function CalculationRow({ label, equation, value, finalValue }: { label: string; equation?: string; value?: string; finalValue: string }) {
+  return (
+    <View style={{ borderBottomWidth: 0.5, borderBottomColor: "#E8EDF2", paddingVertical: 4 }}>
+      <Text style={{ fontSize: 8, fontFamily: "Helvetica-Bold", color: NAVY, marginBottom: 2 }}>{label}</Text>
+      {equation ? <Text style={{ fontSize: 7, color: "#555555" }}>Equation: {equation}</Text> : null}
+      {value ? <Text style={{ fontSize: 7, color: "#555555" }}>Value: {value}</Text> : null}
+      <Text style={{ fontSize: 8, fontFamily: "Courier", color: "#222222" }}>Final: {finalValue}</Text>
+    </View>
+  );
+}
+
+function BaselineExecutiveSummary({ inputs, derived, results }: PdfReportProps) {
+  const species = SPECIES_LABELS[inputs.organism_species] ?? inputs.organism_species;
+  const scaleRatio = inputs.v_target / inputs.v_lab;
+  const warnings = scaleupWarnings(inputs);
+  const method = inputs.scaleup_criterion ?? "power_per_volume";
+  const configs = buildReactorScaleConfigs(inputs, { method });
+
+  return (
+    <Page size="A4" style={s.page}>
+      <PageHeader />
+      <Text style={s.sectionTitle}>Executive Summary</Text>
+      <View style={s.paramBox}>
+        <View style={s.paramRow}><Text style={s.paramLabel}>Organism</Text><Text style={s.paramValue}>{species}</Text></View>
+        <View style={s.paramRow}><Text style={s.paramLabel}>Scale-up</Text><Text style={s.paramValue}>{fmtInt(inputs.v_lab)} L to {fmtInt(inputs.v_target)} L ({fmt(scaleRatio, 0)}x)</Text></View>
+        <View style={s.paramRow}><Text style={s.paramLabel}>Criterion</Text><Text style={s.paramValue}>{SCALEUP_CRITERION_LABELS[method]}</Text></View>
+        <View style={s.paramRow}><Text style={s.paramLabel}>Peak OUR</Text><Text style={s.paramValue}>{fmt(derived.our_peak, 1)} mmol/L/h</Text></View>
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
+        <PdfRadarChart title="Lab Scale Risk Profile" scores={labScores(results)} />
+        <PdfRadarChart title="Target Scale Risk Profile" scores={targetScores(results)} />
+      </View>
+      <PdfInfoBox title="Primary Bottleneck">
+        <Text style={s.bodyText}>{results.primary_bottleneck.statement}</Text>
+      </PdfInfoBox>
+      <PdfInfoBox title="Scale-Up Constraints">
+        <Text style={s.bodyText}>
+          Scale-up performed according to {SCALEUP_CRITERION_LABELS[method]} criterion. Impeller at target scale set to run at {fmt(configs.target.rpm, 0)} RPM and aeration rate at target scale set to {fmt(configs.target.vvm, 2)} vvm.
+        </Text>
+        {warnings.map((warning, index) => (
+          <Text key={index} style={[s.bodyText, { color: "#8A5A00" }]}>Warning: {warning}</Text>
+        ))}
+      </PdfInfoBox>
+      <PageFooter />
+    </Page>
+  );
+}
+
+function BaselineInputSummary({ inputs, derived }: PdfReportProps) {
+  const species = SPECIES_LABELS[inputs.organism_species] ?? inputs.organism_species;
+  const method = inputs.scaleup_criterion ?? "power_per_volume";
+  return (
+    <Page size="A4" style={s.page}>
+      <PageHeader />
+      <Text style={s.sectionTitle}>Input Summary</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <InputTable title="Organism and Biology" rows={[
+          { label: "Organism", value: species },
+          { label: "Peak biomass", value: `${fmt(derived.biomass_cdw, 1)} g/L CDW` },
+          { label: "Biomass category", value: inputs.biomass_density_category ? inputs.biomass_density_category.replace(/_/g, " ") : "Not specified" },
+          { label: "OUR mode", value: inputs.our_mode === "measured" ? "Measured" : "Estimated" },
+          { label: "OUR", value: `${fmt(derived.our_peak, 1)} mmol/L/h` },
+          { label: "Temperature", value: `${fmt(inputs.temperature, 1)} °C` },
+          { label: "DO set point", value: `${fmt(inputs.do_setpoint, 1)} %` },
+          { label: "O2 inlet", value: `${fmt(inputs.o2_inlet ?? 20.9, 1)} %` },
+        ]} />
+        <InputTable title="Lab Scale Reactor" rows={[
+          { label: "Volume", value: `${fmtInt(inputs.v_lab)} L` },
+          { label: "Impeller", value: inputs.impeller_type.replace(/_/g, " ") },
+          { label: "RPM", value: `${fmt(inputs.rpm, 0)} rpm` },
+          { label: "Aeration", value: `${fmt(inputs.vvm, 2)} vvm` },
+          { label: "H/T", value: fmt(inputs.h_d_lab, 2) },
+          { label: "D/T", value: fmt(inputs.dt_ratio_lab ?? 0, 2) },
+          { label: "Impellers", value: fmtInt(inputs.n_impellers) },
+        ]} />
+        <InputTable title="Target Scale Design" rows={[
+          { label: "Volume", value: `${fmtInt(inputs.v_target)} L` },
+          { label: "Criterion", value: SCALEUP_CRITERION_LABELS[method] },
+          { label: "H/T", value: fmt(inputs.h_d_target, 2) },
+          { label: "D/T", value: fmt(inputs.dt_ratio_target ?? 0, 2) },
+          { label: "Impellers", value: fmtInt(inputs.n_impellers_target ?? inputs.n_impellers) },
+        ]} />
+        <InputTable title="Cooling Inputs" rows={[
+          { label: "Cooling water inlet", value: `${fmt(inputs.t_cw_inlet, 1)} °C` },
+          { label: "Cooling water flowrate", value: `${fmt(inputs.cooling_water_flowrate_lpm ?? 30, 1)} L/min` },
+        ]} />
+      </View>
+      <PageFooter />
+    </Page>
+  );
+}
+
+function BaselineRiskOverview({ results }: PdfReportProps) {
+  const lab = labScores(results);
+  const target = targetScores(results);
+  return (
+    <Page size="A4" style={s.page}>
+      <PageHeader />
+      <Text style={s.sectionTitle}>Risk Overview</Text>
+      {DISPLAY_DOMAIN_ORDER.map((domain) => (
+        <View key={domain} style={{ marginBottom: 11, paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: "#E0E0E0" }} wrap={false}>
+          <View style={s.domainHeader}>
+            <Text style={s.domainName}>{DOMAIN_FULL_LABELS[domain]}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: CONFIDENCE_DOT[confidenceForDomain(domain, results)], marginRight: 4 }} />
+              <Text style={{ fontSize: 7, color: "#666666" }}>{confidenceLabel(confidenceForDomain(domain, results))}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <View style={{ width: "48%" }}>
+              <Text style={{ fontSize: 8, fontFamily: "Helvetica-Bold", marginBottom: 3 }}>Lab scale</Text>
+              <PdfRiskSlider score={lab[domain]} value={scoreValue(domain, results, "lab")} />
+            </View>
+            <View style={{ width: "48%" }}>
+              <Text style={{ fontSize: 8, fontFamily: "Helvetica-Bold", marginBottom: 3 }}>Target scale</Text>
+              <PdfRiskSlider score={target[domain]} value={scoreValue(domain, results, "target")} />
+            </View>
+          </View>
+        </View>
+      ))}
+      <PageFooter />
+    </Page>
+  );
+}
+
+function calcLines(domain: RiskDomain, scale: "lab" | "target", inputs: ProcessInputs, derived: DerivedParameters, results: PartialAssessmentResult): { label: string; equation?: string; value?: string; finalValue: string }[] {
+  const { otr, mixing, shear, co2, heat } = results;
+  const isLab = scale === "lab";
+  if (domain === "otr") {
+    const capacity = isLab ? (otr.otr_capacity_lab ?? 0) : (otr.otr_capacity_target ?? 0);
+    const kla = isLab ? otr.kla_lab : otr.kla_target_moderate;
+    const dc = isLab ? derived.df_lm_lab : derived.driving_force;
+    const ratio = derived.our_peak > 0 ? capacity / derived.our_peak : 0;
+    return [
+      { label: "OUR", finalValue: `${fmt(derived.our_peak, 1)} mmol/L/h` },
+      { label: "kLa", finalValue: `${fmt(kla, 1)} h^-1` },
+      { label: "OTR", equation: "OTR = kLa x Delta C_LM", value: `${fmt(kla, 1)} x ${fmt(dc, 3)}`, finalValue: `${fmt(capacity, 1)} mmol/L/h` },
+      { label: "Score", equation: "Score = OTR / OUR", value: `${fmt(capacity, 1)} / ${fmt(derived.our_peak, 1)}`, finalValue: fmt(ratio, 2) },
+    ];
+  }
+  if (domain === "mixing") {
+    const cStar = isLab ? derived.c_star_lab : derived.c_star;
+    const theta = isLab ? mixing.theta_mix_lab : mixing.theta_mix_target;
+    const tau = isLab ? mixing.oxygen_depletion_time_lab_s : mixing.oxygen_depletion_time_target_s;
+    const ratio = isLab ? mixing.o2_mixing_ratio_lab : mixing.o2_mixing_ratio_target;
+    const geom = isLab ? derived.lab_geometry : derived.target_geometry;
+    return [
+      { label: "tau_O", equation: "tau_O = 3600 x C* x DO/100 / OUR", value: `3600 x ${fmt(cStar, 3)} x ${fmt(inputs.do_setpoint, 1)}/100 / ${fmt(derived.our_peak, 1)}`, finalValue: `${fmt(tau, 2)} s` },
+      { label: "tau_mix", equation: "Ruszkowski: tau_mix = C_R T^2 / (epsilon^(1/3) d_i^(4/3))", value: `T=${fmt(geom.t_diameter, 3)} m, d_i=${fmt(geom.d_imp, 3)} m`, finalValue: `${fmt(theta, 2)} s` },
+      { label: "Score", equation: "Score = tau_O / tau_mix", value: `${fmt(tau, 2)} / ${fmt(theta, 2)}`, finalValue: fmt(ratio, 3) },
+    ];
+  }
+  if (domain === "shear") {
+    const tip = isLab ? (shear.tip_speed_lab ?? 0) : shear.tip_speed;
+    const n = isLab ? (shear.n_lab ?? 0) : shear.n_target;
+    const d = isLab ? derived.lab_geometry.d_imp : derived.target_geometry.d_imp;
+    const margin = isLab ? (shear.tip_speed_margin_lab ?? 0) : shear.tip_speed_margin;
+    return [
+      { label: "v_tip", equation: "v_tip = pi N d_i", value: `pi x ${fmt(n, 2)} x ${fmt(d, 3)}`, finalValue: `${fmt(tip, 2)} m/s` },
+      { label: "Threshold", finalValue: `${fmt(shear.tip_speed_threshold, 2)} m/s` },
+      { label: "Score", equation: "Score = v_tip threshold / v_tip impeller", value: `${fmt(shear.tip_speed_threshold, 2)} / ${fmt(tip, 2)}`, finalValue: fmt(margin, 2) },
+    ];
+  }
+  if (domain === "co2") {
+    const scaleResult = isLab ? co2.lab : co2.target;
+    if (!co2.activated || !scaleResult) {
+      return [
+        { label: "Status", finalValue: "Inactive below biomass/OUR trigger thresholds" },
+        { label: "Score", finalValue: "∞" },
+      ];
+    }
+    return [
+      { label: "CER", equation: "CER = RQ x OUR", value: `${fmt(resolveRqPdf(inputs.organism_species), 2)} x ${fmt(derived.our_peak, 1)}`, finalValue: `${fmt(scaleResult.cer, 1)} mmol/L/h` },
+      { label: "kLa_CO2", equation: "kLa_CO2 = kLa_O2 x sqrt(D_CO2/D_O2)", finalValue: `${fmt(scaleResult.kla_co2, 1)} h^-1` },
+      { label: "Score", equation: "Score = P_CO2 threshold / P_CO2 bottom", value: `${fmt(co2.pco2_critical ?? 0, 3)} / ${fmt(scaleResult.pco2_bottom, 3)}`, finalValue: fmt(scaleResult.pco2_margin, 2) },
+    ];
+  }
+  const heatScale = isLab ? heat.lab : heat.target;
+  const qCool = heatScale?.q_cool_max ?? heat.q_cool_max;
+  const qMet = heatScale?.q_metabolic ?? heat.q_metabolic;
+  const u = heatScale?.u_overall ?? heat.u_overall ?? 0;
+  const area = heatScale?.a_jacket ?? heat.a_jacket;
+  const dt = heatScale?.dt_lm ?? heat.dt_lm;
+  return [
+    { label: "Q_cooling", equation: "Q_cooling = U A Delta T_LM", value: `${fmt(u, 1)} x ${fmt(area, 2)} x ${fmt(dt, 1)} / 1000`, finalValue: `${fmt(qCool, 2)} kW` },
+    { label: "Q_metabolic", equation: "Q_metabolic = Delta H_metabolic x OUR x V / 3600", value: `${fmt(METABOLIC_HEAT_FACTOR, 2)} x ${fmt(derived.our_peak, 1)} x V / 3600`, finalValue: `${fmt(qMet, 2)} kW` },
+    { label: "Score", equation: "Score = Qcooling / Qmetabolic", value: `${fmt(qCool, 2)} / ${fmt(qMet, 2)}`, finalValue: fmt(qMet > 0 ? qCool / qMet : 0, 2) },
+  ];
+}
+
+function BaselineCalculationBreakdown({ inputs, derived, results }: PdfReportProps) {
+  return (
+    <Page size="A4" style={s.page}>
+      <PageHeader />
+      <Text style={s.sectionTitle}>Calculation Breakdown</Text>
+      {DISPLAY_DOMAIN_ORDER.map((domain) => (
+        <View key={domain} style={s.domainSection} wrap={false}>
+          <Text style={s.domainName}>{DOMAIN_FULL_LABELS[domain]}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+            <View style={{ width: "48%" }}>
+              <Text style={{ fontSize: 8, fontFamily: "Helvetica-Bold", color: TEAL }}>Lab scale</Text>
+              {calcLines(domain, "lab", inputs, derived, results).map((line, index) => <CalculationRow key={index} {...line} />)}
+            </View>
+            <View style={{ width: "48%" }}>
+              <Text style={{ fontSize: 8, fontFamily: "Helvetica-Bold", color: TEAL }}>Target scale</Text>
+              {calcLines(domain, "target", inputs, derived, results).map((line, index) => <CalculationRow key={index} {...line} />)}
+            </View>
+          </View>
+        </View>
+      ))}
+      <PageFooter />
+    </Page>
+  );
+}
+
+function BaselineProjections({ inputs, derived }: PdfReportProps) {
+  const projection = computePdfScaleProjection(inputs, derived);
+  const rows = [
+    { param: "Impeller RPM (rpm)", lab: fmt(projection.lab.rpm, 0), pilot: fmt(projection.pilot.rpm, 0), prod: fmt(projection.production.rpm, 0) },
+    { param: "Aeration rate (L/min, vvm)", lab: `${fmt(projection.lab.aerationLpm, 2)} (${fmt(projection.lab.vvm, 2)})`, pilot: `${fmt(projection.pilot.aerationLpm, 2)} (${fmt(projection.pilot.vvm, 2)})`, prod: `${fmt(projection.production.aerationLpm, 2)} (${fmt(projection.production.vvm, 2)})` },
+    { param: "Impeller diameter (m)", lab: fmt(projection.lab.impellerDiameterM, 3), pilot: fmt(projection.pilot.impellerDiameterM, 3), prod: fmt(projection.production.impellerDiameterM, 3) },
+    { param: "Reactor height (m)", lab: fmt(projection.lab.reactorHeightM, 3), pilot: fmt(projection.pilot.reactorHeightM, 3), prod: fmt(projection.production.reactorHeightM, 3) },
+    { param: "kLa range (h^-1)", lab: `${fmt(projection.lab.klaMin, 1)}-${fmt(projection.lab.klaMax, 1)}`, pilot: `${fmt(projection.pilot.klaMin, 1)}-${fmt(projection.pilot.klaMax, 1)}`, prod: `${fmt(projection.production.klaMin, 1)}-${fmt(projection.production.klaMax, 1)}` },
+    { param: "Mixing time (s)", lab: fmt(projection.lab.mixingTimeS, 2), pilot: fmt(projection.pilot.mixingTimeS, 2), prod: fmt(projection.production.mixingTimeS, 2) },
+    { param: "Tip speed (m/s)", lab: fmt(projection.lab.tipSpeedMS, 2), pilot: fmt(projection.pilot.tipSpeedMS, 2), prod: fmt(projection.production.tipSpeedMS, 2) },
+    { param: "P_CO2 (bar)", lab: projection.lab.pco2Bar == null ? "—" : fmt(projection.lab.pco2Bar, 3), pilot: projection.pilot.pco2Bar == null ? "—" : fmt(projection.pilot.pco2Bar, 3), prod: projection.production.pco2Bar == null ? "—" : fmt(projection.production.pco2Bar, 3) },
+    { param: "Metabolic heat (kW)", lab: fmt(projection.lab.metabolicHeatKW, 2), pilot: fmt(projection.pilot.metabolicHeatKW, 2), prod: fmt(projection.production.metabolicHeatKW, 2) },
+    { param: "Cooling capacity (kW)", lab: fmt(projection.lab.reactorHeatCapacityKW, 2), pilot: fmt(projection.pilot.reactorHeatCapacityKW, 2), prod: fmt(projection.production.reactorHeatCapacityKW, 2) },
+  ];
+  return (
+    <Page size="A4" style={s.page}>
+      <PageHeader />
+      <Text style={s.sectionTitle}>Scale-Up Projections</Text>
+      <Text style={s.bodyText}>Baseline projections across lab, pilot ({fmtInt(projection.pilotVolumeL)} L), and production scale. Reactor What-If modifications are not included.</Text>
+      <View style={s.projTable}>
+        <View style={s.projHeader}>
+          <Text style={[s.projHeaderCell, s.projParamCol]}>Parameter</Text>
+          <Text style={[s.projHeaderCell, s.projValCol]}>Lab ({fmtInt(inputs.v_lab)} L)</Text>
+          <Text style={[s.projHeaderCell, s.projValCol]}>Pilot ({fmtInt(projection.pilotVolumeL)} L)</Text>
+          <Text style={[s.projHeaderCell, s.projValCol]}>Production ({fmtInt(inputs.v_target)} L)</Text>
+        </View>
+        {rows.map((row, index) => (
+          <View key={index} style={index % 2 === 0 ? s.projRow : s.projRowAlt}>
+            <Text style={[{ fontSize: 7 }, s.projParamCol]}>{row.param}</Text>
+            <Text style={[{ fontSize: 7, fontFamily: "Courier" }, s.projValCol]}>{row.lab}</Text>
+            <Text style={[{ fontSize: 7, fontFamily: "Courier" }, s.projValCol]}>{row.pilot}</Text>
+            <Text style={[{ fontSize: 7, fontFamily: "Courier" }, s.projValCol]}>{row.prod}</Text>
+          </View>
+        ))}
+      </View>
+      <PageFooter />
+    </Page>
+  );
+}
+
+function ParameterEstimationNotes({ inputs, derived, results }: PdfReportProps) {
+  const ourSource = inputs.our_mode === "measured"
+    ? "OUR was supplied by the user as a measured value."
+    : `OUR was estimated from literature ranges for the selected organism and biomass category (${fmt(derived.our_min ?? derived.our_peak, 1)}-${fmt(derived.our_max ?? derived.our_peak, 1)} mmol/L/h).`;
+  const notes = [
+    ourSource,
+    "kLa values are calculated with an ensemble of stirred-tank correlations selected from the local correlation bank, including Van't Riet, Garcia-Ochoa and Gomez, Linek et al., and impeller-specific forms where applicable.",
+    "Mixing time is estimated with the Ruszkowski correlation using reactor geometry, impeller diameter, and turbulent energy dissipation.",
+    "Shear risk uses organism-specific tip-speed thresholds and the impeller tip speed calculated from RPM and impeller diameter.",
+    "CO2 accumulation uses a simplified mass balance with organism respiratory quotient defaults, gas flow, hydrostatic pressure, and kLa_CO2 estimated from the O2 kLa diffusivity ratio.",
+    "Heat removal uses metabolic heat factor, jacket area, LMTD, and an overall U assembled from broth-side, wall, fouling, and jacket-side thermal resistances.",
+  ];
+  return (
+    <Page size="A4" style={s.page}>
+      <PageHeader />
+      <Text style={s.sectionTitle}>Parameter Estimation Notes</Text>
+      {notes.map((note, index) => (
+        <View key={index} style={{ flexDirection: "row", marginBottom: 6 }}>
+          <Text style={{ fontSize: 8, color: TEAL, marginRight: 5 }}>{index + 1}.</Text>
+          <Text style={[s.bodyText, { flex: 1, marginBottom: 0 }]}>{note}</Text>
+        </View>
+      ))}
+      <View style={s.scopeBox}>
+        <Text style={[s.subsectionTitle, { color: NAVY, marginTop: 0 }]}>Scope Limitation</Text>
+        <Text style={s.scopeText}>
+          This assessment is based on empirical correlations with ±30–40% uncertainty on kLa. It does not predict yield or replace pilot experimentation.
+        </Text>
+      </View>
+      <PageFooter />
+    </Page>
+  );
+}
+
 // --- Main document ---
 
 export interface PdfReportProps {
@@ -1054,10 +1677,12 @@ export function PdfReportDocument({ inputs, derived, results }: PdfReportProps) 
       title="Lemnisca Scale-Up Risk Assessment"
       author="Lemnisca Fermentation Scale-Up Risk Predictor"
     >
-      <ExecutiveSummary inputs={inputs} derived={derived} results={results} />
-      <RiskDetail inputs={inputs} derived={derived} results={results} />
-      <Projections inputs={inputs} derived={derived} results={results} />
-      <ReliabilityStatement inputs={inputs} derived={derived} results={results} />
+      <BaselineExecutiveSummary inputs={inputs} derived={derived} results={results} />
+      <BaselineInputSummary inputs={inputs} derived={derived} results={results} />
+      <BaselineRiskOverview inputs={inputs} derived={derived} results={results} />
+      <BaselineCalculationBreakdown inputs={inputs} derived={derived} results={results} />
+      <BaselineProjections inputs={inputs} derived={derived} results={results} />
+      <ParameterEstimationNotes inputs={inputs} derived={derived} results={results} />
     </Document>
   );
 }

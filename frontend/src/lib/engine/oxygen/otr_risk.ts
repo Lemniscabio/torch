@@ -50,28 +50,54 @@ export function calculateOtrRisk(
     });
   }
 
-  // Target-scale operating point
+  // Canonical lab-scale operating point from lab reactor config.
+  const opLab = buildOperatingPoint({
+    D_T: reactorConfigs.lab.geometry.t_diameter,
+    H_L: reactorConfigs.lab.geometry.h_liquid,
+    V_L: reactorConfigs.lab.geometry.volume_m3,
+    d_i: reactorConfigs.lab.geometry.d_imp,
+    impeller_type: inputs.impeller_type,
+    n_imp: reactorConfigs.lab.n_impellers,
+    N_rps: reactorConfigs.lab.rpm / 60,
+    Q_gas: reactorConfigs.lab.gas.q_gas,
+    v_s: reactorConfigs.lab.gas.vs,
+    mu_L: derived.mu,
+  });
+  const ensLab = computeKlaEnsemble(opLab, reactorConfigs.lab.power_w, derived.biomass_cdw);
+
+  // Canonical target-scale operating point from target reactor config.
   const opTarget = buildOperatingPoint({
-    D_T: derived.target_geometry.t_diameter,
-    H_L: derived.target_geometry.h_liquid,
-    V_L: derived.target_geometry.volume_m3,
-    d_i: derived.target_geometry.d_imp,
+    D_T: reactorConfigs.target.geometry.t_diameter,
+    H_L: reactorConfigs.target.geometry.h_liquid,
+    V_L: reactorConfigs.target.geometry.volume_m3,
+    d_i: reactorConfigs.target.geometry.d_imp,
     impeller_type: inputs.impeller_type,
     n_imp: reactorConfigs.target.n_impellers,
-    N_rps: derived.n_rps,
-    Q_gas: derived.q_gas_target,
-    v_s:   derived.vs_target,
+    N_rps: reactorConfigs.target.rpm / 60,
+    Q_gas: reactorConfigs.target.gas.q_gas,
+    v_s:   reactorConfigs.target.gas.vs,
     mu_L:  derived.mu,
   });
 
-  const V_target      = derived.target_geometry.volume_m3;
-  const pv_conservative = PV_SCENARIO_MULTIPLIERS.conservative * derived.pv_lab;
-  const pv_moderate     = PV_SCENARIO_MULTIPLIERS.moderate     * derived.pv_lab;
-  const pv_aggressive   = PV_SCENARIO_MULTIPLIERS.aggressive   * derived.pv_lab;
+  const pv_conservative = PV_SCENARIO_MULTIPLIERS.conservative * reactorConfigs.target.pv_w_m3;
+  const pv_moderate     = PV_SCENARIO_MULTIPLIERS.moderate     * reactorConfigs.target.pv_w_m3;
+  const pv_aggressive   = PV_SCENARIO_MULTIPLIERS.aggressive   * reactorConfigs.target.pv_w_m3;
 
-  const ensConservative = computeKlaEnsemble(opTarget, pv_conservative * V_target, derived.biomass_cdw);
-  const ensModerate     = computeKlaEnsemble(opTarget, pv_moderate     * V_target, derived.biomass_cdw);
-  const ensAggressive   = computeKlaEnsemble(opTarget, pv_aggressive   * V_target, derived.biomass_cdw);
+  const ensConservative = computeKlaEnsemble(
+    opTarget,
+    PV_SCENARIO_MULTIPLIERS.conservative * reactorConfigs.target.power_w,
+    derived.biomass_cdw,
+  );
+  const ensModerate = computeKlaEnsemble(
+    opTarget,
+    reactorConfigs.target.power_w,
+    derived.biomass_cdw,
+  );
+  const ensAggressive = computeKlaEnsemble(
+    opTarget,
+    PV_SCENARIO_MULTIPLIERS.aggressive * reactorConfigs.target.power_w,
+    derived.biomass_cdw,
+  );
 
   const kla_target_moderate = reactorConfigs.target.kla_h;
   const driving_force_target = reactorConfigs.target.oxygen.driving_force_lm;
@@ -107,6 +133,10 @@ export function calculateOtrRisk(
       pv_aggressive,
       correlations_used: ensModerate.correlations,
       kla_std:           ensModerate.std,
+      kla_lab_min:       ensLab.min,
+      kla_lab_max:       ensLab.max,
+      kla_target_min:    ensModerate.min,
+      kla_target_max:    ensModerate.max,
       kla_min:           ensModerate.min,
       kla_max:           ensModerate.max,
       kla_components:    ensModerate.components,

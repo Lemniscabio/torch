@@ -40,10 +40,17 @@ function o2MixingMargin(thetaMix: number, cL: number, ourPeak: number): number {
   return tau / thetaMix;
 }
 
-function mixingConfidence(): { confidence: Confidence; driver: string } {
+function mixingConfidence(ourMode: ProcessInputs["our_mode"]): { confidence: Confidence; driver: string } {
+  if (ourMode === "measured") {
+    return {
+      confidence: "reliable",
+      driver: "OUR user-provided; mixing risk uses Ruszkowski mixing time and O2 depletion margin.",
+    };
+  }
+
   return {
-    confidence: "reliable",
-    driver: "Mixing risk from Ruszkowski mixing time and O2 depletion margin (t_o2 / t_mix).",
+    confidence: "directional",
+    driver: "OUR estimated from literature; mixing risk inherits OUR uncertainty through O2 depletion time.",
   };
 }
 
@@ -97,7 +104,7 @@ export function calculateMixingRisk(
     });
   }
 
-  const { confidence, driver } = mixingConfidence();
+  const { confidence, driver } = mixingConfidence(inputs.our_mode);
 
   return {
     result: {
