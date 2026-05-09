@@ -65,7 +65,7 @@ export default function AssessPage() {
           </div>
 
           {/* Live preview panel — sticky */}
-          <div className="w-80 flex-shrink-0 hidden lg:block">
+          <div className="w-80 flex-shrink-0 hidden lg:block lg:pt-14">
             <LivePreview formState={formState} />
           </div>
         </div>

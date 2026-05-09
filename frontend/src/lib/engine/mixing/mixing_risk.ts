@@ -1,14 +1,13 @@
 // R2 — Mixing Risk.
 //
-// Two complementary scores:
-//   ph_score  — θ_mix vs threshold (applies to batch and fed-batch)
-//   da_score  — kinetic Damköhler Da_eff vs thresholds (gradient/overflow risk)
+// O2-mixing margin (inverse Da-like):
+//   margin = (3600 * C_L / OUR_peak) / theta_mix = t_o2 / t_mix
+// where C_L is dissolved O2 concentration implied by DO setpoint.
 //
-// Overall score = worst of the two.
+// This compares mixing timescale against local O2 depletion timescale.
 
 import type { ProcessInputs, DerivedParameters, MixingRiskResult, RiskScore, Confidence, AssessmentFlag } from "@/lib/types";
-import { RUSZKOWSKI_CONSTANT, RHO, PH_MIX_THRESHOLDS, KINETIC_PARAMS } from "@/lib/constants";
-import { deriveDamkohler } from "./uptake_damkohler";
+import { RUSZKOWSKI_CONSTANT, RHO } from "@/lib/constants";
 import type { ReactorScaleConfigs } from "../reactor_configs";
 
 function ruszkowskiMixingTime(t_diameter: number, d_imp: number, pv: number): number {
@@ -20,29 +19,31 @@ function ruszkowskiMixingTime(t_diameter: number, d_imp: number, pv: number): nu
   );
 }
 
-function scoreDaEff(daEff: number): RiskScore {
-  if (daEff < 0.1)  return "low";
-  if (daEff < 1.0)  return "moderate";
-  if (daEff < 10.0) return "high";
+function scoreO2MixingMargin(margin: number): RiskScore {
+  if (margin > 10.0) return "low";
+  if (margin > 1.0)  return "moderate";
+  if (margin > 0.1)  return "high";
   return "critical";
 }
 
-function scorePhControl(theta_mix_target: number): RiskScore {
-  if (theta_mix_target < PH_MIX_THRESHOLDS.low)      return "low";
-  if (theta_mix_target <= PH_MIX_THRESHOLDS.moderate) return "moderate";
-  return "high";
+function oxygenDepletionTimeSeconds(cL: number, ourPeak: number): number {
+  if (ourPeak <= 0) return Infinity;
+  if (cL <= 0) return 0;
+  return (3600 * cL) / ourPeak;
 }
 
-function mixingConfidence(hasDa: boolean): { confidence: Confidence; driver: string } {
-  if (hasDa) {
-    return {
-      confidence: "reliable",
-      driver: "Mixing risk from Ruszkowski correlation and kinetic Damkohler (Da_eff primary, with lab/target comparison).",
-    };
-  }
+function o2MixingMargin(thetaMix: number, cL: number, ourPeak: number): number {
+  const tau = oxygenDepletionTimeSeconds(cL, ourPeak);
+  if (!Number.isFinite(tau)) return 0;
+  if (tau <= 0) return Infinity;
+  if (thetaMix <= 0) return Infinity;
+  return tau / thetaMix;
+}
+
+function mixingConfidence(): { confidence: Confidence; driver: string } {
   return {
     confidence: "reliable",
-    driver: "Mixing risk based on θ_mix only — no biomass supplied for Damköhler calculation.",
+    driver: "Mixing risk from Ruszkowski mixing time and O2 depletion margin (t_o2 / t_mix).",
   };
 }
 
@@ -80,60 +81,23 @@ export function calculateMixingRisk(
     });
   }
 
-  const ph_score = scorePhControl(theta_mix_target);
+  const oxygen_depletion_time_lab_s = oxygenDepletionTimeSeconds(derived.c_l_lab, derived.our_peak);
+  const oxygen_depletion_time_target_s = oxygenDepletionTimeSeconds(derived.c_l, derived.our_peak);
+  const o2_mixing_ratio_lab = o2MixingMargin(theta_mix_lab, derived.c_l_lab, derived.our_peak);
+  const o2_mixing_ratio_target = o2MixingMargin(theta_mix_target, derived.c_l, derived.our_peak);
 
-  // Kinetic Damköhler — requires biomass and organism kinetics
-  let da_max: number | undefined;
-  let da_eff: number | undefined;
-  let da_eff_lab: number | undefined;
-  let da_eff_target: number | undefined;
-  let mu_eff: number | undefined;
-  let da_score: RiskScore | undefined;
-  let da_score_lab: RiskScore | undefined;
-  let da_score_target: RiskScore | undefined;
+  const score_lab = scoreO2MixingMargin(o2_mixing_ratio_lab);
+  const score_target = scoreO2MixingMargin(o2_mixing_ratio_target);
+  const score = score_target;
 
-  if (derived.biomass_cdw > 0 && derived.our_peak > 0) {
-    const kp = KINETIC_PARAMS[inputs.organism_species];
-    const damLab = deriveDamkohler({
-      theta_mix_s:  theta_mix_lab,
-      mu_max:       kp.mu_max,
-      K_s:          kp.Ks,
-      yield_x_s:    kp.Y_X_S,
-      yield_o2:     kp.Y_O2,
-      biomass_cdw:  derived.biomass_cdw,
-      our_peak:     derived.our_peak,
+  if (o2_mixing_ratio_target <= 0.1) {
+    flags.push({
+      domain: "mixing",
+      message: `O2 mixing margin (t_o2/t_mix) at target is ${o2_mixing_ratio_target.toFixed(2)} — strong mixing/oxygen depletion mismatch expected.`,
     });
-    const damTarget = deriveDamkohler({
-      theta_mix_s:  theta_mix_target,
-      mu_max:       kp.mu_max,
-      K_s:          kp.Ks,
-      yield_x_s:    kp.Y_X_S,
-      yield_o2:     kp.Y_O2,
-      biomass_cdw:  derived.biomass_cdw,
-      our_peak:     derived.our_peak,
-    });
-    da_max   = damTarget.da_max;
-    da_eff   = damTarget.da_eff;
-    da_eff_lab = damLab.da_eff;
-    da_eff_target = damTarget.da_eff;
-    mu_eff   = damTarget.mu_eff;
-    da_score_lab = scoreDaEff(damLab.da_eff);
-    da_score_target = scoreDaEff(damTarget.da_eff);
-    da_score = da_score_target;
-
-    if (damTarget.da_eff >= 10) {
-      flags.push({
-        domain: "mixing",
-        message: `Da_eff at target is ${damTarget.da_eff.toFixed(2)} — strong mixing/uptake mismatch expected.`,
-      });
-    }
   }
 
-  const score = da_score ?? ph_score;
-  const score_lab = da_score_lab ?? ph_score;
-  const score_target = da_score_target ?? ph_score;
-
-  const { confidence, driver } = mixingConfidence(da_score !== undefined);
+  const { confidence, driver } = mixingConfidence();
 
   return {
     result: {
@@ -142,15 +106,10 @@ export function calculateMixingRisk(
       score_target,
       theta_mix_lab,
       theta_mix_target,
-      da_max,
-      da_eff,
-      da_eff_lab,
-      da_eff_target,
-      da_score,
-      da_score_lab,
-      da_score_target,
-      mu_eff,
-      ph_score,
+      o2_mixing_ratio_lab,
+      o2_mixing_ratio_target,
+      oxygen_depletion_time_lab_s,
+      oxygen_depletion_time_target_s,
       confidence,
       driver,
     },

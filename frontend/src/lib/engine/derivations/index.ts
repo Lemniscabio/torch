@@ -106,6 +106,7 @@ export function runAllDerivations(inputs: ProcessInputs): DerivationOutput {
 
     // Lab-scale O₂ solubility
     c_star_lab:  solLab.c_star_avg,
+    c_l_lab:     solLab.c_l,
     df_lm_lab:   solLab.driving_force_lm,
 
     // Target-scale O₂ solubility (primary for OTR risk)

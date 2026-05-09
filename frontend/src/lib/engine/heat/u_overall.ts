@@ -1,9 +1,16 @@
 // Overall heat-transfer coefficient U (W/m²·K).
 //
-// 1/U = 1/h_i + δ_wall/k_wall + 1/h_o
+// 1/U = 1/h_i + Rf_broth + δ_wall/k_wall + Rf_jacket + 1/h_o
 //
-// No fouling factor — overestimates U by ~5–10 % vs a fouled vessel.
-import { U_OVERALL_MIN_W_M2K, U_OVERALL_MAX_W_M2K } from "@/lib/constants";
+// Fouling resistances are included to avoid idealized clean-surface U values.
+// Glass vessels are wall-resistance-limited, so their U cap is lower than SS.
+import {
+  U_OVERALL_MIN_W_M2K,
+  U_OVERALL_MAX_GLASS_W_M2K,
+  U_OVERALL_MAX_SS_W_M2K,
+  BROTH_FOULING_R_M2K_W,
+  JACKET_FOULING_R_M2K_W,
+} from "@/lib/constants";
 
 export interface OverallUResult {
   U:            number; // W/m²·K
@@ -18,12 +25,24 @@ export function deriveOverallU(
   h_o:         number, // W/m²·K — jacket-side film
   k_wall:      number, // W/m·K  — wall thermal conductivity
   thickness_m: number, // m      — wall thickness
+  wall_material?: "glass" | "stainless_steel",
 ): OverallUResult {
   const R_broth  = 1 / h_i;
   const R_wall   = thickness_m / k_wall;
   const R_jacket = 1 / h_o;
-  const R_total  = R_broth + R_wall + R_jacket;
+  const R_total  =
+    R_broth +
+    BROTH_FOULING_R_M2K_W +
+    R_wall +
+    JACKET_FOULING_R_M2K_W +
+    R_jacket;
   const U_raw = 1 / R_total;
-  const U = Math.min(U_OVERALL_MAX_W_M2K, Math.max(U_OVERALL_MIN_W_M2K, U_raw));
+  const inferredMaterial =
+    wall_material ?? (k_wall > 5 ? "stainless_steel" : "glass");
+  const U_max =
+    inferredMaterial === "glass"
+      ? U_OVERALL_MAX_GLASS_W_M2K
+      : U_OVERALL_MAX_SS_W_M2K;
+  const U = Math.min(U_max, Math.max(U_OVERALL_MIN_W_M2K, U_raw));
   return { U, R_broth, R_wall, R_jacket, R_total };
 }

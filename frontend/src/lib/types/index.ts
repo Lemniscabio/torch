@@ -144,6 +144,7 @@ export interface DerivedParameters {
   // D6 — O₂ solubility (Tier 2: hydrostatic + inlet O₂ fraction)
   // Lab-scale
   c_star_lab:           number; // mmol/L — average C* at lab scale
+  c_l_lab:              number; // mmol/L — dissolved O₂ at DO setpoint (lab avg C*)
   df_lm_lab:            number; // mmol/L — log-mean driving force at lab scale
   // Target-scale (primary for OTR risk)
   c_star:               number; // mmol/L — average C* at target scale
@@ -213,20 +214,14 @@ export interface GrowthOxygenRiskResult {
 
 export interface MixingRiskResult {
   score: RiskScore;
-  score_lab?: RiskScore;                    // Lab-scale Damkohler score (when available)
-  score_target?: RiskScore;                 // Target-scale Damkohler score (when available)
+  score_lab?: RiskScore;                    // Lab-scale O2 mixing margin score
+  score_target?: RiskScore;                 // Target-scale O2 mixing margin score
   theta_mix_lab: number;                    // Lab mixing time (s)
   theta_mix_target: number;                 // Target mixing time (s)
-  // Kinetic Damköhler numbers (populated when biomass > 0)
-  da_max?: number;                          // Conservative Da (μ_max-based) at target
-  da_eff?: number;                          // Effective Da (μ_eff-based) at target — primary risk indicator
-  da_eff_lab?: number;                      // Effective Da at lab scale
-  da_eff_target?: number;                   // Effective Da at target scale
-  da_score?: RiskScore;                     // Score based on target da_eff
-  da_score_lab?: RiskScore;                 // Score based on lab da_eff
-  da_score_target?: RiskScore;              // Score based on target da_eff
-  mu_eff?: number;                          // h⁻¹ — bulk-average μ inferred from OUR
-  ph_score: RiskScore;                      // pH control score (θ_mix threshold)
+  o2_mixing_ratio_lab: number;              // O2 mixing margin t_o2 / t_mix at lab scale
+  o2_mixing_ratio_target: number;           // O2 mixing margin t_o2 / t_mix at target scale
+  oxygen_depletion_time_lab_s: number;      // Characteristic O2 depletion time at lab scale (s)
+  oxygen_depletion_time_target_s: number;   // Characteristic O2 depletion time at target scale (s)
   confidence: Confidence;
   driver: string;
 }
@@ -336,9 +331,9 @@ export interface HeatRiskResult {
 export type RiskDomain = "otr" | "mixing" | "shear" | "co2" | "heat";
 
 export interface PrimaryBottleneck {
-  domain: RiskDomain;
+  domain: RiskDomain | null;
   statement: string;                        // Plain-language bottleneck sentence
-  what_would_change: string;                // Actionable input change suggestion
+  what_would_change?: string;               // Deprecated display field (kept for compatibility)
 }
 
 // --- Overall Assessment Result (Section 6) ---

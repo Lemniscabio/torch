@@ -2,6 +2,7 @@
 
 interface BioreactorDiagramProps {
   hd?: number;          // H/D ratio (0.5 – 4.0), undefined = not set
+  dtRatio?: number;     // D/T ratio (0.1 – 0.8), controls impeller diameter
   nImpellers?: number;  // 1 – 4, default 1
   impellerType?: string; // "rushton" | "pitched_blade" | "marine" | "unknown"
   volume?: number;       // L, shown as label
@@ -20,7 +21,14 @@ function renderImpeller(
   const wrap = (children: React.ReactNode) => {
     if (!animated) return <g key={`imp-${index}`}>{children}</g>;
     return (
-      <g key={`imp-${index}`} style={{ transformOrigin: `${cx}px ${cy}px`, animation: `bioreactor-spin 2s linear infinite` }}>
+      <g
+        key={`imp-${index}`}
+        style={{
+          transformBox: "fill-box",
+          transformOrigin: "center",
+          animation: `bioreactor-spin 2s linear infinite`,
+        }}
+      >
         {children}
       </g>
     );
@@ -30,11 +38,14 @@ function renderImpeller(
     case "rushton": {
       const bladeH = Math.max(6, half * 0.28);
       const bladeW = Math.max(8, half * 0.38);
+      const leftBladeInnerX = cx - half * 0.95 + bladeW;
+      const rightBladeInnerX = cx + half * 0.95 - bladeW;
       return wrap(
         <>
           <circle cx={cx} cy={cy} r={half * 0.18} fill="none" stroke="var(--text-heading)" strokeWidth="1.2" />
           <rect x={cx - half * 0.95} y={cy - bladeH / 2} width={bladeW} height={bladeH} rx="1" fill="none" stroke="var(--text-heading)" strokeWidth="1.1" />
           <rect x={cx + half * 0.95 - bladeW} y={cy - bladeH / 2} width={bladeW} height={bladeH} rx="1" fill="none" stroke="var(--text-heading)" strokeWidth="1.1" />
+          <line x1={leftBladeInnerX} y1={cy} x2={rightBladeInnerX} y2={cy} stroke="var(--text-heading)" strokeWidth="1.1" strokeLinecap="round" />
         </>
       );
     }
@@ -73,6 +84,7 @@ function renderImpeller(
 
 export default function BioreactorDiagram({
   hd = 2.0,
+  dtRatio = 0.33,
   nImpellers = 1,
   impellerType = "rushton",
   volume,
@@ -80,6 +92,7 @@ export default function BioreactorDiagram({
   animated = false,
 }: BioreactorDiagramProps) {
   const hdClamped = Math.max(0.5, Math.min(4.5, hd));
+  const dtClamped = Math.max(0.1, Math.min(0.8, dtRatio));
 
   // Normalized dimensions
   const tankD = 80;
@@ -101,8 +114,10 @@ export default function BioreactorDiagram({
   const fillRatio = 0.70;
   const liquidTop = wallBottom - tankH * fillRatio;
 
-  // Impeller diameter ~33% of tank
-  const impellerHalf = tankD * 0.33 / 2;
+  // Impeller diameter from D/T.
+  const impellerHalf = tankD * dtClamped / 2;
+  const baseImpellerHalf = tankD * 0.33 / 2;
+  const impellerScale = impellerHalf / baseImpellerHalf;
 
   // Impeller Y positions
   const impellerYs: number[] = [];
@@ -117,7 +132,7 @@ export default function BioreactorDiagram({
     }
   }
 
-  const shaftBottom = impellerYs[impellerYs.length - 1] + 4;
+  const shaftBottom = impellerYs[impellerYs.length - 1];
 
   // Bubble positions — scattered across the liquid zone
   const bubbles = [
@@ -134,8 +149,8 @@ export default function BioreactorDiagram({
       {animated && (
         <style>{`
           @keyframes bioreactor-spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from { transform: perspective(140px) rotateY(0deg); }
+            to { transform: perspective(140px) rotateY(360deg); }
           }
         `}</style>
       )}
@@ -207,10 +222,15 @@ export default function BioreactorDiagram({
         {/* Shaft */}
         <line x1={cx} y1={wallTop - 6} x2={cx} y2={shaftBottom} stroke="var(--text-heading)" strokeWidth="1.4" opacity="0.6" />
 
-        {/* Impellers — use transform for smooth repositioning */}
+        {/* Impellers — keep centered on shaft; D/T changes only scale, not position */}
         {impellerYs.map((y, i) => (
-          <g key={i} style={{ transform: `translateY(${y}px)`, transition: "transform 500ms ease" }}>
-            {renderImpeller(impellerType, cx, 0, impellerHalf, animated, i)}
+          <g key={i} transform={`translate(0 ${y})`}>
+            <g
+              transform={`translate(${cx} 0) scale(${impellerScale}) translate(${-cx} 0)`}
+              style={{ transition: "transform 500ms ease" }}
+            >
+              {renderImpeller(impellerType, cx, 0, baseImpellerHalf, animated, i)}
+            </g>
           </g>
         ))}
 

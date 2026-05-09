@@ -53,14 +53,33 @@ export const CHILTON_DREW_C: Record<ImpellerType, number> = {
 };
 
 // --- Jacket geometry assumption ---
-// Annular gap is estimated as JACKET_GAP_FRACTION × D_T, clamped to [20, 80] mm.
+// Annular gap is estimated as JACKET_GAP_FRACTION × D_T, clamped to [5, 20] mm.
+// These bounds better represent practical bioreactor jackets and avoid
+// unrealistically large open-annulus flow areas.
 
-export const JACKET_GAP_FRACTION = 0.05;
-export const JACKET_GAP_MIN_M    = 0.020; // m
-export const JACKET_GAP_MAX_M    = 0.080; // m
+export const JACKET_GAP_FRACTION = 0.015;
+export const JACKET_GAP_MIN_M    = 0.005; // m
+export const JACKET_GAP_MAX_M    = 0.025; // m
+
+// Effective fraction of annulus area available for flow.
+// Represents baffled / spiral / dimple / half-pipe jacket internals.
+// This is an engineering approximation, not a universal physical constant.
+// Lower area fraction => higher jacket velocity/Re => higher h_o.
+// Aggressive low values (for example 0.20) can overpredict jacket-side transfer.
+export const JACKET_EFFECTIVE_AREA_FRACTION = 0.80;
+
+// Conservative lower bound for jacket-side film coefficient.
+// Prevents unrealistically low h_o from dominating U when jacket flow is laminar.
+export const JACKET_HO_MIN_W_M2K = 75;
+
+// Additional empirical thermal resistances for biological broth and cooling-water service.
+// These prevent idealized film + clean-wall calculations from overpredicting practical U.
+export const BROTH_FOULING_R_M2K_W = 0.0003;
+export const JACKET_FOULING_R_M2K_W = 0.0002;
 
 // --- Safe bounds for overall heat-transfer coefficient U ---
 // Applied to correlation-derived U to keep estimates in a conservative,
 // physically plausible range for jacketed bioreactors.
 export const U_OVERALL_MIN_W_M2K = 100;
-export const U_OVERALL_MAX_W_M2K = 400;
+export const U_OVERALL_MAX_GLASS_W_M2K = 180;
+export const U_OVERALL_MAX_SS_W_M2K = 400;

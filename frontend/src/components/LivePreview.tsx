@@ -3,18 +3,12 @@
 import { useMemo } from "react";
 import BioreactorDiagram from "@/components/BioreactorDiagram";
 import type {
-  ProcessInputs,
   OrganismClass,
   OrganismSpecies,
   ProcessType,
-  RiskScore,
   BiomassDensityCategory,
   ScaleupCriterion,
-
 } from "@/lib/types";
-import { runAssessment } from "@/lib/engine";
-import type { PartialAssessmentResult } from "@/lib/engine";
-import { INPUT_DEFAULTS, getRepresentativeBiomassCdw } from "@/lib/constants";
 
 // Mirrors FormState from InputForm — kept in sync manually
 export interface PreviewFormState {
@@ -60,178 +54,39 @@ interface LivePreviewProps {
   formState: PreviewFormState | null;
 }
 
-// Risk domain display config
-const DOMAIN_CONFIG: {
-  key: string;
-  label: string;
-  icon: string;
-  colorVar: string;
-}[] = [
-  { key: "otr", label: "Oxygen Transfer", icon: "O\u2082", colorVar: "otr" },
-  { key: "mixing", label: "Mixing", icon: "\u21bb", colorVar: "mixing" },
-  { key: "shear", label: "Shear Stress", icon: "\u26a1", colorVar: "shear" },
-  { key: "co2", label: "CO\u2082 Accumulation", icon: "CO\u2082", colorVar: "co2" },
-  { key: "heat", label: "Heat Removal", icon: "\u0394T", colorVar: "heat" },
-];
-
-function getRiskColor(score: RiskScore): string {
-  switch (score) {
-    case "low": return "text-risk-low";
-    case "moderate": return "text-risk-moderate";
-    case "high": return "text-risk-high";
-    case "critical": return "text-risk-critical";
-  }
-}
-
-function getRiskBg(score: RiskScore): string {
-  switch (score) {
-    case "low": return "bg-risk-low/[0.08] border-risk-low/20";
-    case "moderate": return "bg-risk-moderate/[0.08] border-risk-moderate/20";
-    case "high": return "bg-risk-high/[0.08] border-risk-high/20";
-    case "critical": return "bg-risk-critical/[0.08] border-risk-critical/20";
-  }
-}
-
-function getRiskGlow(score: RiskScore): string {
-  switch (score) {
-    case "low": return "risk-glow-low";
-    case "moderate": return "risk-glow-moderate";
-    case "high": return "risk-glow-high";
-    case "critical": return "risk-glow-critical";
-  }
-}
-
-function getDomainKeyNumber(key: string, results: PartialAssessmentResult): string {
-  switch (key) {
-    case "otr": return `OTR/OUR: ${results.otr.kla_ratio.toFixed(2)}`;
-    case "mixing": return results.mixing.da_eff != null
-      ? `Da_eff: ${results.mixing.da_eff.toFixed(2)}`
-      : `\u03B8_mix: ${results.mixing.theta_mix_target.toFixed(0)}s`;
-    case "shear": return `Tip: ${results.shear.tip_speed.toFixed(1)} m/s`;
-    case "co2": return results.co2.activated && results.co2.pco2_bottom
-      ? `pCO\u2082: ${results.co2.pco2_bottom.toFixed(3)} bar`
-      : "Below threshold";
-    case "heat": return `Q ratio: ${results.heat.heat_ratio.toFixed(2)}`;
-    default: return "";
-  }
-}
-
-function getDomainScore(key: string, results: PartialAssessmentResult): RiskScore {
-  switch (key) {
-    case "otr": return results.otr.score;
-    case "mixing": return results.mixing.score;
-    case "shear": return results.shear.score;
-    case "co2": return results.co2.score;
-    case "heat": return results.heat.score;
-    default: return "low";
-  }
-}
-
 export default function LivePreview({ formState }: LivePreviewProps) {
-  // Count filled fields for progress
-  const progress = useMemo(() => {
-    if (!formState) return { filled: 0, total: 7, percentage: 0 };
-    let filled = 0;
-    const total = 7; // minimum required fields
-    if (formState.organism_class) filled++;
-    if (formState.organism_species) filled++;
-    if (formState.v_lab && parseFloat(formState.v_lab) > 0) filled++;
-    if (formState.v_target && parseFloat(formState.v_target) > 0) filled++;
-    if (formState.rpm && parseFloat(formState.rpm) > 0) filled++;
-    if (formState.biomass_density_category) filled++;
-    if (formState.temperature && parseFloat(formState.temperature) > 0) filled++;
-    return { filled, total, percentage: Math.round((filled / total) * 100) };
-  }, [formState]);
+  const PREVIEW_WIDTH = 200;
+  const labVolume = useMemo(() => {
+    const value = parseFloat(formState?.v_lab ?? "");
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }, [formState?.v_lab]);
 
-  // Try to run assessment with available data
-  const liveResults = useMemo<PartialAssessmentResult | null>(() => {
-    if (!formState) return null;
+  const targetVolume = useMemo(() => {
+    const value = parseFloat(formState?.v_target ?? "");
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }, [formState?.v_target]);
 
-    // Minimum required: organism_class, organism_species, v_lab, v_target, rpm, biomass category, temperature
-    const oc = formState.organism_class;
-    const os = formState.organism_species;
-    const vLab = parseFloat(formState.v_lab);
-    const vTarget = parseFloat(formState.v_target);
-    const rpm = parseFloat(formState.rpm);
-    const biomassDensityCategory = formState.biomass_density_category as BiomassDensityCategory | "";
-    const temp = parseFloat(formState.temperature);
-
-    if (
-      !oc || !os ||
-      isNaN(vLab) || vLab <= 0 ||
-      isNaN(vTarget) || vTarget <= vLab ||
-      isNaN(rpm) || rpm <= 0 ||
-      !biomassDensityCategory ||
-      isNaN(temp) || temp <= 0
-    ) {
-      return null;
-    }
-    const biomass = getRepresentativeBiomassCdw(biomassDensityCategory);
-
-    try {
-      const inputs: ProcessInputs = {
-        organism_class: oc as ProcessInputs["organism_class"],
-        organism_species: os as ProcessInputs["organism_species"],
-        process_type: (formState.process_type || "batch") as ProcessInputs["process_type"],
-        v_lab: vLab,
-        v_target: vTarget,
-        scaleup_criterion: (formState.scaleup_criterion || "power_per_volume") as ProcessInputs["scaleup_criterion"],
-        h_d_lab: parseFloat(formState.h_d_lab) || INPUT_DEFAULTS.h_d_lab,
-        h_d_target: parseFloat(formState.h_d_target) || 1.0,
-        dt_ratio_lab: formState.dt_ratio_lab ? parseFloat(formState.dt_ratio_lab) : undefined,
-        dt_ratio_target: formState.dt_ratio_target ? parseFloat(formState.dt_ratio_target) : undefined,
-        n_impellers: parseInt(formState.n_impellers) || 1,
-        n_impellers_target: formState.n_impellers_target ? parseInt(formState.n_impellers_target) : (parseInt(formState.n_impellers) || 1),
-        impeller_type: (formState.impeller_type || "rushton") as ProcessInputs["impeller_type"],
-        rpm,
-        vvm: parseFloat(formState.vvm) || INPUT_DEFAULTS.vvm,
-        biomass,
-        biomass_unit: "g_L_CDW",
-        biomass_density_category: biomassDensityCategory,
-        our_mode: (formState.our_mode || "estimate") as ProcessInputs["our_mode"],
-        our_measured: formState.our_mode === "measured" && formState.our_measured
-          ? parseFloat(formState.our_measured)
-          : undefined,
-        do_setpoint: parseFloat(formState.do_setpoint) || INPUT_DEFAULTS.do_setpoint,
-        o2_inlet: formState.o2_inlet ? parseFloat(formState.o2_inlet) : INPUT_DEFAULTS.o2_inlet,
-        temperature: temp,
-        t_cw_inlet: parseFloat(formState.t_cw_inlet) || INPUT_DEFAULTS.t_cw_inlet,
-        cooling_water_flowrate_lpm: formState.cooling_water_flowrate
-          ? parseFloat(formState.cooling_water_flowrate)
-          : INPUT_DEFAULTS.cooling_water_flowrate_lpm,
-      };
-
-      return runAssessment(inputs);
-    } catch {
-      return null;
-    }
-  }, [formState]);
-
-  // Scale ratio
   const scaleRatio = useMemo(() => {
-    if (!formState) return null;
-    const lab = parseFloat(formState.v_lab);
-    const target = parseFloat(formState.v_target);
-    if (lab > 0 && target > lab) return target / lab;
-    return null;
-  }, [formState]);
+    if (labVolume == null || targetVolume == null || labVolume <= 0 || targetVolume <= labVolume) return null;
+    return targetVolume / labVolume;
+  }, [labVolume, targetVolume]);
+
+  const labHd = parseFloat(formState?.h_d_lab ?? "");
+  const targetHd = parseFloat(formState?.h_d_target ?? "");
+  const labDt = parseFloat(formState?.dt_ratio_lab ?? "");
+  const targetDt = parseFloat(formState?.dt_ratio_target ?? "");
+  const labImpellers = parseInt(formState?.n_impellers ?? "", 10);
+  const targetImpellers = parseInt(formState?.n_impellers_target ?? formState?.n_impellers ?? "", 10);
 
   return (
     <div className="sticky top-8 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-1">
+      <div className="mb-1">
         <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-silver-500">
-          Live Risk Preview
+          Live reactor preview
         </h3>
-        <div className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
-          liveResults ? "border-risk-low/30 text-risk-low bg-risk-low/[0.06]" : "border-silver-700 text-silver-600"
-        }`} style={{ ...(!liveResults ? { background: "var(--input-bg)" } : {}) }}>
-          {liveResults ? "LIVE" : "AWAITING DATA"}
-        </div>
       </div>
 
-      {/* Bioreactor Diagram */}
-      <div className="glass-panel-sm p-4">
+      <div className="glass-panel-sm p-4 min-h-[290px]">
         <div className="flex items-center justify-between mb-3">
           <span className="text-[11px] text-silver-500 uppercase tracking-[0.08em]">Target Vessel</span>
           {scaleRatio && (
@@ -241,99 +96,42 @@ export default function LivePreview({ formState }: LivePreviewProps) {
           )}
         </div>
         <BioreactorDiagram
-          hd={parseFloat(formState?.h_d_target || "") || 2.0}
-          nImpellers={formState?.n_impellers_target ? parseInt(formState.n_impellers_target) || 1 : (formState?.n_impellers ? parseInt(formState.n_impellers) || 1 : 1)}
+          hd={Number.isFinite(targetHd) ? targetHd : 2.0}
+          dtRatio={Number.isFinite(targetDt) ? targetDt : 0.33}
+          nImpellers={Number.isFinite(targetImpellers) && targetImpellers > 0 ? targetImpellers : 1}
           impellerType={formState?.impeller_type || "rushton"}
-          volume={formState?.v_target ? parseFloat(formState.v_target) || undefined : undefined}
-          width={200}
+          volume={targetVolume ?? undefined}
+          width={PREVIEW_WIDTH}
         />
       </div>
 
-      {/* Data Completeness */}
-      <div className="glass-panel-sm p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] text-silver-500 uppercase tracking-[0.08em]">Core Parameters</span>
-          <span className="text-xs font-mono text-silver-300">{progress.filled}/{progress.total}</span>
-        </div>
-        <div className="flex gap-1">
-          {Array.from({ length: progress.total }).map((_, i) => (
-            <div
-              key={i}
-              className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                i < progress.filled
-                  ? "bg-accent/60"
-                  : ""
-              }`}
-              style={i >= progress.filled ? { background: "var(--range-track)" } : {}}
-            />
-          ))}
-        </div>
+      <div className="flex items-center justify-center py-0.5">
+        <svg width="44" height="44" viewBox="0 0 44 44" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="scale-arrow-grad" x1="22" y1="42" x2="22" y2="2">
+              <stop offset="0%" stopColor="rgba(120,136,168,0.3)" />
+              <stop offset="100%" stopColor="rgba(88,182,197,0.7)" />
+            </linearGradient>
+          </defs>
+          <circle cx="22" cy="22" r="18" stroke="rgba(255,255,255,0.08)" fill="rgba(255,255,255,0.02)" />
+          <path d="M22 29V17" stroke="url(#scale-arrow-grad)" strokeWidth="2" strokeLinecap="round" />
+          <path d="M17 21L22 16L27 21" stroke="url(#scale-arrow-grad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </div>
 
-      {/* Risk Domain Cards */}
-      <div className="space-y-2">
-        {DOMAIN_CONFIG.map((domain) => {
-          const hasResults = liveResults !== null;
-          const score = hasResults ? getDomainScore(domain.key, liveResults!) : null;
-          const keyNumber = hasResults ? getDomainKeyNumber(domain.key, liveResults!) : null;
-
-          return (
-            <div
-              key={domain.key}
-              className={`glass-panel-sm p-3.5 transition-all duration-300 border ${
-                hasResults && score
-                  ? `${getRiskBg(score)} ${getRiskGlow(score)}`
-                  : "opacity-40"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <span className={`text-sm font-mono w-8 text-center ${
-                    hasResults && score ? getRiskColor(score) : "text-silver-700"
-                  }`}>
-                    {domain.icon}
-                  </span>
-                  <div>
-                    <span className="text-xs font-medium text-silver-300">{domain.label}</span>
-                    {keyNumber && (
-                      <p className="text-[10px] text-silver-500 font-mono mt-0.5">{keyNumber}</p>
-                    )}
-                  </div>
-                </div>
-                {hasResults && score ? (
-                  <span className={`risk-badge risk-badge-${score}`}>
-                    {score}
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-silver-600 font-mono">&mdash;</span>
-                )}
-              </div>
-            </div>
-          );
-        })}
+      <div className="glass-panel-sm p-4 min-h-[290px]">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[11px] text-silver-500 uppercase tracking-[0.08em]">Lab Vessel</span>
+        </div>
+        <BioreactorDiagram
+          hd={Number.isFinite(labHd) ? labHd : 1.2}
+          dtRatio={Number.isFinite(labDt) ? labDt : 0.33}
+          nImpellers={Number.isFinite(labImpellers) && labImpellers > 0 ? labImpellers : 1}
+          impellerType={formState?.impeller_type || "rushton"}
+          volume={labVolume ?? undefined}
+          width={PREVIEW_WIDTH}
+        />
       </div>
-
-      {/* Bottleneck Statement */}
-      {liveResults && (
-        <div className="glass-panel-sm p-4 border-accent/10">
-          <p className="text-[10px] text-silver-500 uppercase tracking-[0.08em] mb-1.5">Primary Bottleneck</p>
-          <p className="text-xs text-silver-200 leading-relaxed">
-            {liveResults.primary_bottleneck.statement}
-          </p>
-          <p className="text-[10px] text-accent/70 mt-2 italic leading-relaxed">
-            {liveResults.primary_bottleneck.what_would_change}
-          </p>
-        </div>
-      )}
-
-      {/* Hint when no results */}
-      {!liveResults && progress.filled > 0 && (
-        <div className="text-center py-3">
-          <p className="text-[11px] text-accent/70 italic">
-            {progress.total - progress.filled} more parameter{progress.total - progress.filled > 1 ? "s" : ""} needed for live preview
-          </p>
-        </div>
-      )}
     </div>
   );
 }

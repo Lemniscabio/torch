@@ -22,11 +22,6 @@ const SPECIES_LABELS: Record<string, string> = {
   other_yeast: "Other yeast",
 };
 
-const PROCESS_LABELS: Record<string, string> = {
-  batch: "Batch",
-  fed_batch: "Fed-batch",
-};
-
 interface UserProfile {
   id: string;
   email: string;
@@ -376,7 +371,6 @@ export default function DashboardPage() {
               {assessments.map((a) => {
                 const highestRisk = getHighestRisk(a.results);
                 const species = SPECIES_LABELS[a.inputs.organism_species] ?? a.inputs.organism_species;
-                const process = PROCESS_LABELS[a.inputs.process_type] ?? a.inputs.process_type;
                 const date = new Date(a.created_at).toLocaleDateString("en-GB", {
                   day: "numeric",
                   month: "short",
@@ -398,7 +392,7 @@ export default function DashboardPage() {
                         <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getRiskDotColor(highestRisk)}`} />
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-silver-200 group-hover:text-silver-100 transition-colors">
-                            {species} &mdash; {process}
+                            {species}
                           </p>
                           <p className="text-xs text-silver-500 mt-0.5">
                             {a.inputs.v_lab} L &rarr; {Number(a.inputs.v_target).toLocaleString("en-GB")} L

@@ -62,7 +62,13 @@ export function runHeatCapacityCheck(inputs: HeatCapacityInputs): HeatCapacityRe
   const broth_film  = deriveBrothFilmCoeff(inputs.D_T, inputs.d_imp, inputs.N_rps, inputs.mu, inputs.impeller_type);
   const jacket_film = deriveJacketFilmCoeff(inputs.D_T, inputs.flowrate_lpm);
   const wall        = getWallProperties(inputs.volume_litres);
-  const u_result    = deriveOverallU(broth_film.h_i, jacket_film.h_o, wall.k_W_mK, wall.thickness_m);
+  const u_result    = deriveOverallU(
+    broth_film.h_i,
+    jacket_film.h_o,
+    wall.k_W_mK,
+    wall.thickness_m,
+    wall.material,
+  );
 
   const Q_available_kW = (u_result.U * area.A_total * lmtd) / 1000; // W → kW
   const ratio          = Q_metabolic_kW > 0 ? Q_available_kW / Q_metabolic_kW : Infinity;

@@ -146,7 +146,7 @@ export interface FormState {
 const INITIAL_STATE: FormState = {
   organism_class: "",
   organism_species: "",
-  process_type: "",
+  process_type: "fed_batch",
   batch_x0: String(BATCH_DEFAULTS.x0_g_L),
   batch_s0: String(BATCH_DEFAULTS.s0_g_L),
   fed_batch_fill_pct: String(FED_BATCH_DEFAULTS.initial_fill_pct),
@@ -201,7 +201,7 @@ interface StepDef {
 }
 
 const ALL_STEPS: StepDef[] = [
-  { id: "a", title: "What are you scaling?",         subtitle: "Organism & process type",       icon: "01" },
+  { id: "a", title: "What are you scaling?",         subtitle: "Organism identity",              icon: "01" },
   { id: "b", title: "How big are you going?",        subtitle: "Lab & target volumes",           icon: "02" },
   { id: "c", title: "Your lab-scale setup",          subtitle: "Lab vessel, impeller & agitation", icon: "03" },
   { id: "d", title: "Process characterisation",      subtitle: "Biomass, oxygen & thermal",     icon: "04" },
@@ -339,7 +339,11 @@ interface InputFormProps {
 
 export default function InputForm({ onStateChange, initialValues }: InputFormProps) {
   const router = useRouter();
-  const [form, setForm] = useState<FormState>({ ...INITIAL_STATE, ...initialValues });
+  const [form, setForm] = useState<FormState>({
+    ...INITIAL_STATE,
+    ...initialValues,
+    process_type: "fed_batch",
+  });
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [submitted, setSubmitted] = useState(false);
   const [showAnalyzing, setShowAnalyzing] = useState(false);
@@ -476,13 +480,12 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
   }, [form.our_mode, form.biomass_density_category, form.organism_species]);
 
   const transparency = useMemo(() => {
-    const totalParams = 12;
+    const totalParams = 11;
     let entered = 0;
     let estimated = 0;
 
     if (form.organism_class) entered++;
     if (form.organism_species) entered++;
-    if (form.process_type) entered++;
     if (form.v_lab) entered++;
     if (form.v_target) entered++;
     if (form.rpm) entered++;
@@ -529,19 +532,6 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
       if (stepId === "a") {
         if (!form.organism_class) errs.organism_class = "Organism class is required.";
         if (!form.organism_species) errs.organism_species = "Organism species is required.";
-        if (!form.process_type) errs.process_type = "Process type is required.";
-        if (form.process_type === "batch") {
-          const x0 = parseFloat(form.batch_x0);
-          const s0 = parseFloat(form.batch_s0);
-          if (isNaN(x0) || x0 <= 0) errs.batch_x0 = "Initial biomass must be greater than zero.";
-          if (isNaN(s0) || s0 <= 0) errs.batch_s0 = "Initial substrate must be greater than zero.";
-        }
-        if (form.process_type === "fed_batch") {
-          const fill = parseFloat(form.fed_batch_fill_pct);
-          const time = parseFloat(form.fed_batch_time_h);
-          if (isNaN(fill) || fill <= 0 || fill > 100) errs.fed_batch_fill_pct = "Fill must be between 1% and 100%.";
-          if (isNaN(time) || time <= 0) errs.fed_batch_time_h = "Batch phase duration must be greater than zero.";
-        }
       }
 
       if (stepId === "b") {
@@ -678,17 +668,12 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
       const processInputs: ProcessInputs = {
         organism_class:  form.organism_class as ProcessInputs["organism_class"],
         organism_species: form.organism_species as ProcessInputs["organism_species"],
-        process_type:    form.process_type as ProcessInputs["process_type"],
-
-        batch_config: form.process_type === "batch" ? {
-          x0_g_L: parseFloat(form.batch_x0) || BATCH_DEFAULTS.x0_g_L,
-          s0_g_L: parseFloat(form.batch_s0) || BATCH_DEFAULTS.s0_g_L,
-        } : undefined,
-
-        fed_batch_config: form.process_type === "fed_batch" ? {
-          initial_fill_pct: parseFloat(form.fed_batch_fill_pct) || FED_BATCH_DEFAULTS.initial_fill_pct,
-          batch_time_h:     parseFloat(form.fed_batch_time_h)   || FED_BATCH_DEFAULTS.batch_time_h,
-        } : undefined,
+        process_type: "fed_batch",
+        batch_config: undefined,
+        fed_batch_config: {
+          initial_fill_pct: FED_BATCH_DEFAULTS.initial_fill_pct,
+          batch_time_h: FED_BATCH_DEFAULTS.batch_time_h,
+        },
 
         v_lab:    parseFloat(form.v_lab),
         v_target: parseFloat(form.v_target),
@@ -918,79 +903,6 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                   </div>
                 )}
 
-                {/* Process type */}
-                <div id="process_type">
-                  <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
-                    Process type<RequiredMark />
-                  </label>
-                  <div className="flex gap-2">
-                    {(["batch", "fed_batch"] as ProcessType[]).map((pt) => (
-                      <button key={pt} type="button" onClick={() => set("process_type", pt)}
-                        className={`btn-toggle px-5 py-2.5 text-sm ${form.process_type === pt ? "active" : ""}`}>
-                        {pt === "batch" ? "Batch" : "Fed-batch"}
-                      </button>
-                    ))}
-                  </div>
-                  {fieldError("process_type")}
-                </div>
-
-                {/* Batch sub-config */}
-                {form.process_type === "batch" && (
-                  <div className="glass-panel-sm px-4 py-4 space-y-4 animate-fade-in">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500">
-                      Batch initial conditions
-                    </p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div id="batch_x0">
-                        <label className="block text-[11px] text-silver-500 mb-1.5">
-                          Initial biomass, X&#x2080; (g/L CDW)
-                        </label>
-                        <input type="number" value={form.batch_x0}
-                          onChange={(e) => set("batch_x0", e.target.value)}
-                          className={inputCls("batch_x0")} min={0} step="any" />
-                        {fieldError("batch_x0")}
-                      </div>
-                      <div id="batch_s0">
-                        <label className="block text-[11px] text-silver-500 mb-1.5">
-                          Initial substrate, S&#x2080; (g/L)
-                        </label>
-                        <input type="number" value={form.batch_s0}
-                          onChange={(e) => set("batch_s0", e.target.value)}
-                          className={inputCls("batch_s0")} min={0} step="any" />
-                        {fieldError("batch_s0")}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Fed-batch sub-config */}
-                {form.process_type === "fed_batch" && (
-                  <div className="glass-panel-sm px-4 py-4 space-y-4 animate-fade-in">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500">
-                      Fed-batch parameters
-                    </p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div id="fed_batch_fill_pct">
-                        <label className="block text-[11px] text-silver-500 mb-1.5">
-                          Initial fill (% of working volume)
-                        </label>
-                        <input type="number" value={form.fed_batch_fill_pct}
-                          onChange={(e) => set("fed_batch_fill_pct", e.target.value)}
-                          className={inputCls("fed_batch_fill_pct")} min={1} max={100} step="1" />
-                        {fieldError("fed_batch_fill_pct")}
-                      </div>
-                      <div id="fed_batch_time_h">
-                        <label className="block text-[11px] text-silver-500 mb-1.5">
-                          Batch phase duration (h)
-                        </label>
-                        <input type="number" value={form.fed_batch_time_h}
-                          onChange={(e) => set("fed_batch_time_h", e.target.value)}
-                          className={inputCls("fed_batch_time_h")} min={0} step="any" />
-                        {fieldError("fed_batch_time_h")}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1332,9 +1244,8 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                           >
                             <span className="block text-sm font-medium text-silver-200">{option.label}</span>
                             <span className="block text-[11px] text-accent mt-1">
-                              {option.range} · {option.assumption}
+                              {option.range}
                             </span>
-                            <span className="block text-[10px] text-silver-600 mt-1.5">{option.description}</span>
                           </button>
                         ))}
                       </div>
@@ -1394,25 +1305,6 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                             </p>
                             {form.our_mode === "estimate" && (
                               <div className="mt-3">
-                                {ourEstimation ? (
-                                  ourEstimation.unsupported ? (
-                                    <div className="glass-panel-sm border-[var(--border-primary)] bg-[var(--bg-sunken)] px-4 py-3 text-sm text-risk-moderate italic">
-                                      OUR estimate is unavailable for {ourEstimation.species_name}. Please enter a measured OUR value.
-                                    </div>
-                                  ) : (
-                                    <div className="glass-panel-sm border-[var(--border-primary)] bg-[var(--bg-sunken)] px-4 py-3 text-sm text-accent italic">
-                                      OUR estimated: ~{ourEstimation.our_peak.toFixed(0)} mmol/L/h
-                                      <span className="text-accent/70 block text-xs mt-1">
-                                        {ourEstimation.species_name}, {ourEstimation.category_label.toLowerCase()} ({ourEstimation.biomass_cdw.toFixed(0)} g/L CDW, {ourEstimation.rheology})
-                                      </span>
-                                      <span className="text-accent/70 block text-xs">
-                                        Bounds: {ourEstimation.our_min.toFixed(0)}&ndash;{ourEstimation.our_max.toFixed(0)} mmol/L/h
-                                      </span>
-                                    </div>
-                                  )
-                                ) : (
-                                  <p className="text-xs text-silver-600 italic">Select organism and biomass density to see OUR estimate.</p>
-                                )}
                                 {fieldError("our_mode")}
                               </div>
                             )}

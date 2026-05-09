@@ -6,6 +6,7 @@ import {
   CHILTON_DREW_C,
   JACKET_WATER_MU_PA_S, JACKET_WATER_K_W_MK, JACKET_WATER_PR, WATER_RHO_KG_M3,
   JACKET_GAP_FRACTION, JACKET_GAP_MIN_M, JACKET_GAP_MAX_M,
+  JACKET_EFFECTIVE_AREA_FRACTION, JACKET_HO_MIN_W_M2K,
   VESSEL_GLASS_THRESHOLD_LITRES, GLASS_K_W_MK, GLASS_WALL_M, SS316_K_W_MK, SS316_WALL_M,
 } from "@/lib/constants";
 
@@ -37,7 +38,7 @@ export function deriveBrothFilmCoeff(
 }
 
 // ─── Jacket-side film coefficient h_o (W/m²·K) ──────────────────────────────
-// Assumes annular jacket with gap = clamp(JACKET_GAP_FRACTION·D_T, 20 mm, 80 mm).
+// Assumes annular jacket with gap = clamp(JACKET_GAP_FRACTION·D_T, 5 mm, 20 mm).
 // Dittus-Boelter (water being heated by warm broth → exponent 0.4):
 //   Nu = 0.023 · Re^0.8 · Pr^0.4
 // Valid for Re > 10 000; returns a conservative floor for laminar flow.
@@ -55,7 +56,10 @@ export function deriveJacketFilmCoeff(
 ): JacketFilmResult {
   const gap_m    = Math.min(JACKET_GAP_MAX_M, Math.max(JACKET_GAP_MIN_M, JACKET_GAP_FRACTION * D_T));
   const D_h      = 2 * gap_m;                                           // hydraulic diameter (thin annulus)
-  const A_c      = Math.PI * gap_m * (D_T + gap_m);                    // annulus cross-section (m²)
+  // Open-annulus A_c can be too large for real jackets with flow-directing internals,
+  // which underpredicts velocity/Re and drives h_o unrealistically low.
+  const A_annulus = Math.PI * gap_m * (D_T + gap_m);                   // ideal annulus cross-section (m²)
+  const A_c      = A_annulus * JACKET_EFFECTIVE_AREA_FRACTION;         // effective hydraulic flow area (m²)
   const F_m3s    = flowrate_lpm / 60000;                                // m³/s
   const u_jkt    = A_c > 0 ? F_m3s / A_c : 0;                         // m/s
   const Re_jkt   = (WATER_RHO_KG_M3 * u_jkt * D_h) / JACKET_WATER_MU_PA_S;
@@ -66,9 +70,15 @@ export function deriveJacketFilmCoeff(
   } else if (Re_jkt >= 2300) {
     Nu = 0.023 * Math.pow(Re_jkt, 0.8) * Math.pow(JACKET_WATER_PR, 0.4) * 0.7; // transitional correction
   } else {
-    Nu = 3.66; // laminar fully-developed floor
+    // 3.66 alone can be too punitive for entry-region effects in practical jackets.
+    // Keep the classical floor, but allow a conservative Re^0.5-based lower-end boost.
+    Nu = Math.max(
+      3.66,
+      0.664 * Math.sqrt(Re_jkt) * Math.pow(JACKET_WATER_PR, 1 / 3),
+    );
   }
-  const h_o = (Nu * JACKET_WATER_K_W_MK) / D_h;
+  const h_o_raw = (Nu * JACKET_WATER_K_W_MK) / D_h;
+  const h_o = Math.max(h_o_raw, JACKET_HO_MIN_W_M2K);
 
   return { h_o, gap_m, Re_jkt, u_jkt };
 }

@@ -14,7 +14,6 @@ import {
   METABOLIC_HEAT_FACTOR,
   RUSZKOWSKI_CONSTANT,
   RHO,
-  FEED_TAU_MAP,
   KLA_CO2_O2_RATIO,
   H_CO2,
   G,
@@ -27,6 +26,7 @@ import {
   VANT_RIET_COALESCING_VS_EXPONENT,
 } from "@/lib/constants";
 import { deriveVesselGeometry, deriveGasVelocity } from "@/lib/engine";
+import { deriveOxygenSolubility } from "@/lib/engine/derivations";
 
 // --- Constants ---
 
@@ -42,11 +42,6 @@ const SPECIES_LABELS: Record<string, string> = {
   p_pastoris: "P. pastoris",
   other_bacteria: "Other bacterium",
   other_yeast: "Other yeast",
-};
-
-const PROCESS_TYPE_LABELS: Record<string, string> = {
-  batch: "Batch",
-  fed_batch: "Fed-batch",
 };
 
 const DOMAIN_LABELS: Record<string, string> = {
@@ -106,7 +101,6 @@ function countEstimatedParams(inputs: ProcessInputs): {
   const alwaysProvided: (keyof ProcessInputs)[] = [
     "organism_class",
     "organism_species",
-    "process_type",
     "v_lab",
     "v_target",
     "rpm",
@@ -201,10 +195,7 @@ function getMitigation(
     case "otr":
       return `Required kLa of ${fmt(otr.kla_required)} h\u207B\u00B9 exceeds standard P/V achievability at ${fmtInt(inputs.v_target)} L. Options: (1) Reduce target biomass ~20% to bring OUR within standard kLa range. (2) Dual Rushton or Rushton-to-PBT cascade configuration. (3) Pressure overlay (+0.5 bar increases C* by ~15%).`;
     case "mixing":
-      if (mixing.da_max != null) {
-        return `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Feed produces Da = ${fmt(mixing.da_max, 3)}. Options: (1) Switch to continuous feed. (2) Relocate feed port to impeller high-turbulence zone. (3) Reduce peak feed rate and extend feed duration.`;
-      }
-      return `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. Options: (1) Add a second impeller. (2) Reduce target vessel H/D ratio. (3) Increase agitation speed within shear limits.`;
+      return `Mixing time at ${fmtInt(inputs.v_target)} L is ~${fmt(mixing.theta_mix_target)} s. O2 mixing margin (t_o2/t_mix) = ${fmt(mixing.o2_mixing_ratio_target ?? 0, 3)}. Options: (1) Increase agitation/mixing efficiency. (2) Reduce peak OUR demand. (3) Increase O2 availability at the same DO control strategy.`;
     case "shear":
       return `Tip speed of ${fmt(shear.tip_speed)} m/s at constant P/V exceeds ${SPECIES_LABELS[inputs.organism_species] ?? inputs.organism_species} threshold of ${fmt(shear.tip_speed_threshold)} m/s. Options: (1) Switch to pitched blade turbine. (2) Accept lower P/V with supplementary O\u2082 strategy. (3) Consider scale-up at constant tip speed instead of constant P/V.`;
     case "co2":
@@ -221,7 +212,7 @@ function getMitigation(
 interface PilotRow {
   klaAchievable: number;
   mixingTime: number;
-  da_max: number | null;
+  o2_mixing_ratio: number;
   tipSpeed: number;
   pco2Bottom: number | null;
   heatKwM3: number;
@@ -241,11 +232,16 @@ function computePilot(inputs: ProcessInputs, derived: DerivedParameters): PilotR
     RUSZKOWSKI_CONSTANT * pilotT * pilotT /
     (Math.pow(epsilon, 1 / 3) * Math.pow(pilotDimp, 4 / 3));
 
-  let da_max: number | null = null;
-  if (inputs.process_type === "fed_batch" && inputs.feed_frequency) {
-    const tau = FEED_TAU_MAP[inputs.feed_frequency];
-    da_max = mixingTime / tau;
-  }
+  const cLPilot = deriveOxygenSolubility(
+    inputs.temperature,
+    inputs.do_setpoint,
+    geometry.h_liquid,
+    inputs.o2_inlet ?? 20.9,
+  ).c_l;
+
+  const o2_mixing_ratio = derived.our_peak > 0
+    ? (3600 * Math.max(cLPilot, 1e-9) / derived.our_peak) / Math.max(mixingTime, 1e-9)
+    : 0;
 
   const dImpLab = derived.lab_geometry.d_imp;
   const nTarget = derived.n_rps * Math.pow(dImpLab / pilotDimp, 5 / 3);
@@ -275,7 +271,7 @@ function computePilot(inputs: ProcessInputs, derived: DerivedParameters): PilotR
   const qMetabolic = METABOLIC_HEAT_FACTOR * derived.our_peak * vPilotM3;
   const heatKwM3 = vPilotM3 > 0 ? qMetabolic / vPilotM3 : 0;
 
-  return { klaAchievable, mixingTime, da_max, tipSpeed, pco2Bottom, heatKwM3 };
+  return { klaAchievable, mixingTime, o2_mixing_ratio, tipSpeed, pco2Bottom, heatKwM3 };
 }
 
 // --- Styles ---
@@ -579,7 +575,6 @@ function ExecutiveSummary({
   const { otr, mixing, shear, co2, heat, primary_bottleneck: bottleneck } = results;
   const scaleRatio = inputs.v_target / inputs.v_lab;
   const species = SPECIES_LABELS[inputs.organism_species] ?? inputs.organism_species;
-  const processType = PROCESS_TYPE_LABELS[inputs.process_type] ?? inputs.process_type;
 
   // Build summary paragraph
   const domains = [
@@ -606,10 +601,10 @@ function ExecutiveSummary({
 
   const riskRows = [
     { domain: "Oxygen Transfer (OTR)", score: otr.score, key: `OTR/OUR: ${fmt(otr.kla_ratio, 2)}`, conf: confidenceLabel(otr.confidence) },
-    { domain: "Mixing", score: mixing.score, key: mixing.da_max != null ? `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s, Da: ${fmt(mixing.da_max, 3)}` : `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s`, conf: confidenceLabel(mixing.confidence) },
+    { domain: "Mixing", score: mixing.score, key: `\u03B8_mix: ${fmt(mixing.theta_mix_target)} s, O2 margin: ${fmt(mixing.o2_mixing_ratio_target ?? 0, 3)}`, conf: confidenceLabel(mixing.confidence) },
     { domain: "Shear Stress", score: shear.score, key: `Tip speed: ${fmt(shear.tip_speed)} m/s`, conf: confidenceLabel(shear.confidence) },
     { domain: "CO\u2082 Accumulation", score: co2.score, key: co2.activated && co2.pco2_bottom != null ? `pCO\u2082: ${fmt(co2.pco2_bottom, 3)} bar` : "Not activated", conf: confidenceLabel(co2.confidence) },
-    { domain: "Heat Removal", score: heat.score, key: `Heat ratio: ${fmt(heat.heat_ratio * 100)}%`, conf: confidenceLabel(heat.confidence) },
+    { domain: "Heat Removal", score: heat.score, key: `Q_cool/Q_metabolic: ${fmt(heat.heat_transfer_margin ?? 0, 2)}`, conf: confidenceLabel(heat.confidence) },
   ];
 
   return (
@@ -623,10 +618,6 @@ function ExecutiveSummary({
         <View style={s.paramRow}>
           <Text style={s.paramLabel}>Organism</Text>
           <Text style={s.paramValue}>{species}</Text>
-        </View>
-        <View style={s.paramRow}>
-          <Text style={s.paramLabel}>Process type</Text>
-          <Text style={s.paramValue}>{processType}</Text>
         </View>
         <View style={s.paramRow}>
           <Text style={s.paramLabel}>Lab volume</Text>
@@ -645,9 +636,6 @@ function ExecutiveSummary({
       {/* Primary bottleneck */}
       <View style={s.bottleneckBox}>
         <Text style={s.bottleneckText}>{bottleneck.statement}</Text>
-        <Text style={s.bottleneckSub}>
-          What would change this? {bottleneck.what_would_change}
-        </Text>
       </View>
 
       {/* Risk score table */}
@@ -726,13 +714,14 @@ function RiskDetail({
       params: [
         { label: "\u03B8_mix (lab)", value: `${fmt(mixing.theta_mix_lab)} s` },
         { label: "\u03B8_mix (target)", value: `${fmt(mixing.theta_mix_target)} s` },
-        ...(mixing.da_max != null
-          ? [{ label: "Da (Damk\u00F6hler number)", value: fmt(mixing.da_max, 3) }]
-          : []),
+        { label: "C_L (lab)", value: `${fmt(derived.c_l_lab, 3)} mmol/L` },
+        { label: "C_L (target)", value: `${fmt(derived.c_l, 3)} mmol/L` },
+        { label: "O2 depletion time (lab)", value: Number.isFinite(mixing.oxygen_depletion_time_lab_s) ? `${fmt(mixing.oxygen_depletion_time_lab_s, 2)} s` : "∞" },
+        { label: "O2 depletion time (target)", value: Number.isFinite(mixing.oxygen_depletion_time_target_s) ? `${fmt(mixing.oxygen_depletion_time_target_s, 2)} s` : "∞" },
+        { label: "O2 mixing margin t_o2/t_mix (lab)", value: fmt(mixing.o2_mixing_ratio_lab ?? 0, 3) },
+        { label: "O2 mixing margin t_o2/t_mix (target)", value: fmt(mixing.o2_mixing_ratio_target ?? 0, 3) },
       ],
-      thresholdNote: mixing.da_max != null
-        ? "Da: <0.01 Low, 0.01\u20130.1 Moderate, 0.1\u20131.0 High, >1.0 Critical"
-        : "\u03B8_mix: <30s Low, 30\u201360s Moderate, >60s High",
+      thresholdNote: "O2 margin: >10.0 Low, 1.0\u201310.0 Moderate, 0.1\u20131.0 High, \u22640.1 Critical",
       uncertaintyNote: `Mixing time scales as (V_target/V_lab)^(1/3). Actual performance depends on vessel internals and impeller configuration.`,
     },
     {
@@ -775,11 +764,11 @@ function RiskDetail({
       params: [
         { label: "Q_metabolic", value: `${fmt(heat.q_metabolic, 2)} kW` },
         { label: "Q_cool_max", value: `${fmt(heat.q_cool_max, 2)} kW` },
-        { label: "Heat ratio", value: fmt(heat.heat_ratio, 2) },
+        { label: "Heat transfer margin Q_cool/Q_metabolic", value: fmt(heat.heat_transfer_margin ?? 0, 2) },
         { label: "A_jacket", value: `${fmt(heat.a_jacket, 2)} m\u00B2` },
         { label: "\u0394T_lm", value: `${fmt(heat.dt_lm, 1)}\u00B0C` },
       ],
-      thresholdNote: "<0.60 Low, 0.60\u20130.85 Moderate, 0.85\u20131.00 High, >1.00 Critical",
+      thresholdNote: ">1.67 Low, 1.18\u20131.67 Moderate, 1.00\u20131.18 High, \u22641.00 Critical",
       uncertaintyNote: `Assumes U = 400 W/m\u00B2\u00B7K and cooling water outlet T_cw_in + 10\u00B0C. Internal coils not modelled.`,
     },
   ];
@@ -881,10 +870,10 @@ function Projections({
       prod: fmt(mixing.theta_mix_target),
     },
     {
-      param: "Da (mixing)",
-      lab: "\u2014",
-      pilotVal: pilot.da_max != null ? fmt(pilot.da_max, 3) : "\u2014",
-      prod: mixing.da_max != null ? fmt(mixing.da_max, 3) : "\u2014",
+      param: "O2 mixing margin (t_o2/t_mix)",
+      lab: fmt(mixing.o2_mixing_ratio_lab ?? 0, 3),
+      pilotVal: fmt(pilot.o2_mixing_ratio, 3),
+      prod: fmt(mixing.o2_mixing_ratio_target ?? 0, 3),
     },
     {
       param: "Tip speed (m/s)",

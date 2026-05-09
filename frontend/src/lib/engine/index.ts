@@ -91,35 +91,73 @@ const SCORE_ORDER: Record<RiskScore, number> = {
   low: 0, moderate: 1, high: 2, critical: 3,
 };
 
-function domainRatio(domain: RiskDomain, result: PartialAssessmentResult): number {
+function normalizedRiskPressure(domain: RiskDomain, score: RiskScore, result: PartialAssessmentResult): number {
   switch (domain) {
-    case "otr":     return result.otr.kla_ratio > 0 ? 1 / result.otr.kla_ratio : Infinity;
-    case "mixing":  return result.mixing.da_eff_target ?? result.mixing.da_eff ?? result.mixing.theta_mix_target / 30;
-    case "shear":   return result.shear.tip_speed_ratio;
-    case "co2":     return result.co2.pco2_bottom != null ? result.co2.pco2_bottom / 0.15 : 0;
-    case "heat":    return result.heat.heat_ratio;
+    case "otr": {
+      const ratio = result.otr.otr_our_ratio_target ?? result.otr.kla_ratio;
+      if (ratio <= 0) return Infinity;
+      if (score === "critical") return 0.7 / ratio;
+      if (score === "high") return 1.0 / ratio;
+      if (score === "moderate") return 1.5 / ratio;
+      return 0;
+    }
+    case "mixing": {
+      const ratio = result.mixing.o2_mixing_ratio_target ?? 0;
+      if (ratio <= 0) return Infinity;
+      if (score === "critical") return 0.1 / ratio;
+      if (score === "high") return 1.0 / ratio;
+      if (score === "moderate") return 10.0 / ratio;
+      return 0;
+    }
+    case "shear": {
+      const ratio = result.shear.tip_speed_ratio;
+      if (score === "critical") return ratio / 1.3;
+      if (score === "high") return ratio / 1.0;
+      if (score === "moderate") return ratio / 0.7;
+      return 0;
+    }
+    case "co2": {
+      const bottom = result.co2.target?.pco2_bottom ?? result.co2.pco2_bottom ?? 0;
+      const critical = result.co2.pco2_critical ?? 0.15;
+      return critical > 0 ? bottom / critical : Infinity;
+    }
+    case "heat": {
+      const ratio = result.heat.target?.heat_transfer_margin ?? result.heat.heat_transfer_margin ?? 0;
+      if (ratio <= 0) return Infinity;
+      if (score === "critical") return 1.0 / ratio;
+      if (score === "high") return (1 / 0.85) / ratio;
+      if (score === "moderate") return (1 / 0.60) / ratio;
+      return 0;
+    }
   }
 }
 
 function determinePrimaryBottleneck(result: PartialAssessmentResult): PrimaryBottleneck {
   const domains: { domain: RiskDomain; score: RiskScore }[] = [
-    { domain: "otr",    score: result.otr.score },
-    { domain: "mixing", score: result.mixing.score },
-    { domain: "shear",  score: result.shear.score },
-    { domain: "co2",    score: result.co2.score },
-    { domain: "heat",   score: result.heat.score },
+    { domain: "otr",    score: result.otr.score_target ?? result.otr.score },
+    { domain: "mixing", score: result.mixing.score_target ?? result.mixing.score },
+    { domain: "shear",  score: result.shear.score_target ?? result.shear.score },
+    { domain: "co2",    score: result.co2.target?.score ?? result.co2.score },
+    { domain: "heat",   score: result.heat.target?.score ?? result.heat.score },
   ];
 
-  domains.sort((a, b) => {
-    const diff = SCORE_ORDER[b.score] - SCORE_ORDER[a.score];
-    return diff !== 0 ? diff : domainRatio(b.domain, result) - domainRatio(a.domain, result);
-  });
+  if (domains.every((d) => d.score === "low")) {
+    return {
+      domain: null,
+      statement: "Low risk across all domains, no bottlenecks to scale-up",
+    };
+  }
 
-  const primary = domains[0];
+  const worstSeverity = Math.max(...domains.map((d) => SCORE_ORDER[d.score]));
+  const mostAdverse = domains.filter((d) => SCORE_ORDER[d.score] === worstSeverity);
+  mostAdverse.sort((a, b) => (
+    normalizedRiskPressure(b.domain, b.score, result) - normalizedRiskPressure(a.domain, a.score, result)
+  ));
+
+  const primary = mostAdverse[0];
   return {
-    domain:           primary.domain,
-    statement:        generateBottleneckStatement(primary.domain, result),
-    what_would_change: generateWhatWouldChange(primary.domain, result),
+    domain: primary.domain,
+    statement: generateBottleneckStatement(primary.domain, result),
   };
 }
 
@@ -132,42 +170,15 @@ function generateBottleneckStatement(domain: RiskDomain, result: PartialAssessme
   const label = DOMAIN_LABELS[domain];
   switch (domain) {
     case "otr":
-      return `${label} is your critical constraint. Required kLa of ${result.otr.kla_required.toFixed(0)} h⁻¹ versus achievable ${result.otr.kla_target_moderate.toFixed(0)} h⁻¹ at constant P/V.`;
+      return `${label} is your critical constraint. Required oxygen uptake rate (OUR) of ${result.derived.our_peak.toFixed(1)} mmol/L/h is proximal to or higher than the achievable oxygen transfer rate (OTR) of ${(result.otr.otr_capacity_target ?? 0).toFixed(1)} mmol/L/h, leading to potential oxygen-limited growth.`;
     case "mixing":
-      if (result.mixing.da_eff != null) {
-        return `${label} is your critical constraint. Mixing time of ${result.mixing.theta_mix_target.toFixed(0)} s at target scale produces Da_eff = ${result.mixing.da_eff.toFixed(2)} — mixing/uptake mismatch expected.`;
-      }
-      return `${label} is your critical constraint. Mixing time of ${result.mixing.theta_mix_target.toFixed(0)} s at target scale may compromise pH homogeneity.`;
+      return `${label} is your critical constraint. Mixing time of ${result.mixing.theta_mix_target.toFixed(1)} s is proximal to or higher than oxygen uptake time of ${(result.mixing.oxygen_depletion_time_target_s ?? 0).toFixed(1)} s, leading to DO gradients in the reactor.`;
     case "shear":
-      return `${label} is your critical constraint. Tip speed of ${result.shear.tip_speed.toFixed(1)} m/s at constant P/V exceeds organism threshold of ${result.shear.tip_speed_threshold.toFixed(1)} m/s (ratio ${result.shear.tip_speed_ratio.toFixed(2)}).`;
+      return `${label} is your critical constraint. Tip speed of impeller of ${result.shear.tip_speed.toFixed(2)} m/s is proximal to or higher than the tip speed threshold of the microbe of ${result.shear.tip_speed_threshold.toFixed(2)} m/s, which can cause potential shear damage.`;
     case "co2":
-      return `${label} is your critical constraint. Estimated pCO₂ at vessel bottom is ${(result.co2.pco2_bottom ?? 0).toFixed(2)} bar.`;
+      return `${label} is your critical constraint. CO₂ partial pressure at the bottom of the reactor of ${(result.co2.target?.pco2_bottom ?? result.co2.pco2_bottom ?? 0).toFixed(3)} bar is proximal to or higher than the CO₂ partial pressure threshold of the microbe of ${(result.co2.pco2_critical ?? 0).toFixed(3)} bar, leading to hampered growth.`;
     case "heat":
-      return `${label} is your critical constraint. Metabolic heat of ${result.heat.q_metabolic.toFixed(1)} kW versus cooling capacity of ${result.heat.q_cool_max.toFixed(1)} kW (ratio ${result.heat.heat_ratio.toFixed(2)}).`;
-  }
-}
-
-function generateWhatWouldChange(domain: RiskDomain, result: PartialAssessmentResult): string {
-  switch (domain) {
-    case "otr": {
-      const klaReqNeeded = result.otr.kla_target_moderate /
-        (result.otr.kla_ratio < 0.7 ? 0.7 : result.otr.kla_ratio < 1.0 ? 1.0 : 1.5);
-      return `If your measured OUR is below ${(klaReqNeeded * result.derived.driving_force).toFixed(0)} mmol/L/h, OTR risk improves by one level.`;
-    }
-    case "mixing":
-      if (result.mixing.da_eff != null && result.mixing.da_eff > 0.1) {
-        return "Switching to continuous feed would reduce Da and may lower mixing risk.";
-      }
-      return "Increasing agitation or reducing target vessel H/D ratio would improve mixing time.";
-    case "shear":
-      return "Switching to a pitched blade turbine or scaling at constant tip speed instead of constant P/V would reduce shear risk.";
-    case "co2":
-      return "Increasing sparging rate to enhance CO₂ stripping or reducing target vessel H/D ratio would lower pCO₂ at vessel bottom.";
-    case "heat": {
-      const targetHeatRatio = result.heat.heat_ratio > 1.0 ? 1.0 : result.heat.heat_ratio > 0.85 ? 0.85 : 0.6;
-      const dtLmNeeded = (result.heat.q_metabolic / targetHeatRatio * 1000) / (400 * result.heat.a_jacket);
-      return `If cooling water is available at a temperature giving ΔT_lm of ${dtLmNeeded.toFixed(1)}°C, heat removal risk improves by one level.`;
-    }
+      return `${label} is your critical constraint. Heat removal capacity of the reactor of ${result.heat.q_cool_max.toFixed(2)} kW is proximal to or lower than the metabolic heat generated during fermentation of ${result.heat.q_metabolic.toFixed(2)} kW, leading to a potential temperature rise during reaction.`;
   }
 }
 
