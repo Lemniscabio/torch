@@ -36,7 +36,7 @@ export function deriveDamkohler(inputs: DamkohlerInputs): DamkohlerResult {
 
   // τ_uptake = K_s · Y_X/S / (μ · X)   [h] → convert to seconds
   const tau_uptake_max_s = biomass_cdw > 0
-    ? (yield_x_s / (mu_max * biomass_cdw)) * 3600
+    ? (K_s * yield_x_s / (mu_max * biomass_cdw)) * 3600
     : Infinity;
 
   // μ_eff inferred from OUR: μ = OUR · Y_O2 / (X · 31.25)
@@ -45,7 +45,7 @@ export function deriveDamkohler(inputs: DamkohlerInputs): DamkohlerResult {
     : 0;
 
   const tau_uptake_eff_s = mu_eff > 0
-    ? (yield_x_s / (mu_eff * biomass_cdw)) * 3600
+    ? (K_s * yield_x_s / (mu_eff * biomass_cdw)) * 3600
     : Infinity;
 
   const da_max = tau_uptake_max_s > 0 ? theta_mix_s / tau_uptake_max_s : 0;

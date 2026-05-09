@@ -1,7 +1,6 @@
 // TypeScript interfaces for Lemnisca Fermentation Scale-Up Risk Predictor
 // All field IDs and structures per /docs/lemnisca_scaleup_app_dev_spec.md
 
-import type { BatchGrowthResult, FedBatchGrowthResult } from "@/lib/engine/growth";
 
 // --- Enums and Literal Types ---
 
@@ -74,6 +73,7 @@ export interface ProcessInputs {
   impeller_type: ImpellerType;      // Default: rushton
   dt_ratio_lab?: number;             // d/T ratio override for lab vessel (default: from impeller type)
   dt_ratio_target?: number;          // d/T ratio override for target vessel (default: from impeller type)
+  target_rpm_override?: number;      // What-if only: fix target RPM and compute P/V from geometry
   rpm: number;                      // Agitation at peak demand (RPM), > 0, <= 3000
   vvm: number;                      // Airflow at peak demand (VVM), default 1.0, 0.1–5.0
 
@@ -204,8 +204,6 @@ export interface GrowthOxygenScaleRiskResult {
   limiting: "substrate" | "oxygen";
   confidence: Confidence;
   driver: string;
-  batch?: BatchGrowthResult;
-  fed_batch?: FedBatchGrowthResult;
 }
 
 export interface GrowthOxygenRiskResult {

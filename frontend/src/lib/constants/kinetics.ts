@@ -209,11 +209,6 @@ export const KINETIC_PARAMS: Record<OrganismSpecies, KineticParameters> = {
   },
 };
 
-// --- Feed concentration default ---
-
-/** Standard glucose feed concentration (g/L).
- *  Typical high-density fed-batch feed used when no specific value is provided.
- *  Source: Lee (1996) Biotechnol. Bioeng. 49:348 — 500 g/L glucose concentrate
- *          is the industrial standard for E. coli high-density culture.
- */
-export const STANDARD_GLUCOSE_FEED_CONC = 500; // g/L
+// --- ARCHIVED ---
+// STANDARD_GLUCOSE_FEED_CONC was only used by growth_oxygen_risk.ts (archived).
+// export const STANDARD_GLUCOSE_FEED_CONC = 500; // g/L — Lee (1996) Biotechnol. Bioeng. 49:348

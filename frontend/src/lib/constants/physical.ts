@@ -12,7 +12,7 @@ export const G = 9.81;
 // --- Gas constants ---
 
 /** Molar volume (L/mol at STP) — used in exhaust gas OUR calc */
-export const MOLAR_VOLUME_STP = 22.4;
+// export const MOLAR_VOLUME_STP = 22.4;
 
 /** Atmospheric pressure (Pa) — used in R4, D6 */
 export const ATMOSPHERIC_PRESSURE_PA = 101325;

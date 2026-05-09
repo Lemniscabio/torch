@@ -13,6 +13,8 @@ import {
   deriveViscosity,
   deriveVesselGeometry,
 } from "./derivations";
+import { buildOperatingPoint, computeKlaEnsemble } from "./oxygen/kla_achievable";
+import { gassedPower } from "./correlations/gassed_power";
 import {
   scaleUpByKla,
   scaleUpByPowerPerVolume,
@@ -140,6 +142,40 @@ export function buildReactorScaleConfigs(
     inputs.dt_ratio_target,
   );
 
+  let targetRpm        = scaleup.target_rpm;
+  let targetVvm        = scaleup.target_vvm;
+  let targetPowerW     = scaleup.target_power_w;
+  let targetPvWM3      = scaleup.target_pv_w_m3;
+  let targetKlaH       = scaleup.target_kla_h;
+  let targetTipSpeedMS = scaleup.target_tip_speed_m_s;
+
+  if (inputs.target_rpm_override !== undefined) {
+    // Fix target RPM (typically the baseline target RPM before a geometry
+    // change). Recompute power, kLa and tip speed so they reflect the new
+    // impeller diameter at that RPM rather than the criterion-equalised P/V.
+    targetRpm = inputs.target_rpm_override;
+    const mu          = deriveViscosity(inputs.temperature);
+    const biomass_cdw = deriveBiomassCdw(inputs.biomass, inputs.biomass_unit, inputs.organism_species);
+    const gas         = deriveGasVelocity(targetVvm, inputs.v_target, targetGeometry.a_cross);
+    const op          = buildOperatingPoint({
+      D_T:           targetGeometry.t_diameter,
+      H_L:           targetGeometry.h_liquid,
+      V_L:           targetGeometry.volume_m3,
+      d_i:           targetGeometry.d_imp,
+      impeller_type: inputs.impeller_type,
+      n_imp:         inputs.n_impellers_target ?? inputs.n_impellers,
+      N_rps:         targetRpm / 60,
+      Q_gas:         gas.q_gas,
+      v_s:           gas.vs,
+      mu_L:          mu,
+    });
+    targetPowerW     = gassedPower(op);
+    targetPvWM3      = targetPowerW / targetGeometry.volume_m3;
+    const kla        = computeKlaEnsemble(op, targetPowerW, biomass_cdw);
+    targetKlaH       = kla.mean;
+    targetTipSpeedMS = Math.PI * (targetRpm / 60) * targetGeometry.d_imp;
+  }
+
   return {
     lab: buildScaleConfig({
       scale: "lab",
@@ -159,12 +195,12 @@ export function buildReactorScaleConfigs(
       volume_litres: inputs.v_target,
       geometry: targetGeometry,
       n_impellers: inputs.n_impellers_target ?? inputs.n_impellers,
-      rpm: scaleup.target_rpm,
-      vvm: scaleup.target_vvm,
-      power_w: scaleup.target_power_w,
-      pv_w_m3: scaleup.target_pv_w_m3,
-      kla_h: scaleup.target_kla_h,
-      tip_speed_m_s: scaleup.target_tip_speed_m_s,
+      rpm: targetRpm,
+      vvm: targetVvm,
+      power_w: targetPowerW,
+      pv_w_m3: targetPvWM3,
+      kla_h: targetKlaH,
+      tip_speed_m_s: targetTipSpeedMS,
       inputs,
     }),
     scaleup,

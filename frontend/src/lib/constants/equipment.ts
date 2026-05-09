@@ -1,7 +1,7 @@
 // Equipment and vessel configuration constants.
 // Source: /docs/lemnisca_scaleup_app_dev_spec.md Section 1.3
 
-import type { ImpellerType, FeedFrequency } from "@/lib/types";
+import type { ImpellerType } from "@/lib/types";
 
 // --- Impeller Constants ---
 
@@ -18,15 +18,6 @@ export const IMPELLER_CONSTANTS: Record<ImpellerType, ImpellerConstants> = {
   unknown:       { np: 5.0,  pg_p_factor: 0.60, d_t_ratio: 0.33 },
 };
 
-// --- Feed Frequency → τ_feed Mapping (seconds) ---
-
-export const FEED_TAU_MAP: Record<FeedFrequency, number> = {
-  continuous:   10,
-  "1_10min":    60,
-  "10_30min":   900,
-  "30plus_min": 2400,
-};
-
 // --- VVM validity range for Pg/P flag (Section 2.1 D3) ---
 
 export const VVM_VALID_LOW  = 0.3;
@@ -36,3 +27,17 @@ export const VVM_VALID_HIGH = 2.0;
 
 export const PV_LOW_SANITY  = 500;
 export const PV_HIGH_SANITY = 8000;
+
+// --- ARCHIVED ---
+// FEED_TAU_MAP and its FeedFrequency dependency are deprecated.
+// FeedFrequency type is marked @deprecated in types/index.ts.
+// No active callers remain in the engine.
+//
+// import type { FeedFrequency } from "@/lib/types";
+//
+// export const FEED_TAU_MAP: Record<FeedFrequency, number> = {
+//   continuous:   10,
+//   "1_10min":    60,
+//   "10_30min":   900,
+//   "30plus_min": 2400,
+// };

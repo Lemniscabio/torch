@@ -1325,8 +1325,8 @@ const MODIFICATIONS: ModificationDefinition[] = [
   { id: "decrease_impeller_rpm", label: "Decrease impeller RPM", domains: ["shear"], section: "operational" },
   { id: "increase_aeration_rate", label: "Increase aeration rate", domains: ["otr", "co2", "heat"], section: "operational" },
   { id: "increase_oxygen_saturation", label: "Increase oxygen saturation", domains: ["otr"], section: "operational" },
-  { id: "increase_impeller_diameter", label: "Increase impeller diameter", domains: ["otr", "mixing", "co2", "heat"], section: "design" },
-  { id: "decrease_impeller_diameter", label: "Decrease impeller diameter", domains: ["shear"], section: "design" },
+  { id: "increase_impeller_diameter", label: "Increase impeller diameter", domains: ["otr", "mixing", "shear", "co2", "heat"], section: "design" },
+  { id: "decrease_impeller_diameter", label: "Decrease impeller diameter", domains: ["shear", "mixing"], section: "design" },
   { id: "switch_to_rushton_impeller", label: "Switch to Rushton impeller", domains: ["otr", "mixing", "co2", "heat"], section: "design" },
   { id: "switch_to_pitched_blade_impeller", label: "Switch to Pitched blade impeller", domains: ["otr", "mixing", "co2", "heat"], section: "design" },
   { id: "add_internal_cooling_coils", label: "Add internal cooling coils", domains: ["heat"], section: "design" },
@@ -1359,7 +1359,16 @@ function applyModificationsWithOxygenLevel(
   if (active.has("increase_impeller_rpm")) out.rpm = limits.max_rpm.max;
   if (active.has("increase_aeration_rate")) out.vvm = limits.max_aeration_vvm.max;
   if (oxygenLevel != null) out.o2_inlet = oxygenLevel;
-  if (active.has("increase_impeller_diameter")) dtTarget = Math.min(dtTarget + 0.1, 0.8);
+  if (active.has("increase_impeller_diameter")) {
+    dtTarget = Math.min(dtTarget + 0.1, 0.8);
+    // Keep target RPM fixed at the baseline value so that the larger impeller
+    // at the same RPM produces higher P/V and higher kLa, rather than having
+    // the criterion solver drop RPM to preserve the original P/V.
+    const baselineTargetRpm = buildReactorScaleConfigs(inputs, {
+      method: inputs.scaleup_criterion ?? "power_per_volume",
+    }).target.rpm;
+    out.target_rpm_override = baselineTargetRpm;
+  }
   if (active.has("decrease_impeller_diameter")) dtTarget = Math.max(dtTarget - 0.1, 0.1);
 
   out.dt_ratio_target = dtTarget;

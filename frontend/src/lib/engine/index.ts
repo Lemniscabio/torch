@@ -49,7 +49,6 @@ export type {
 
 export { calculateOtrRisk }    from "./oxygen/otr_risk";
 // Legacy growth-kinetics oxygen risk path archived from active assessment flow.
-// export { calculateGrowthOxygenRisk, scoreMuRatio } from "./oxygen/growth_oxygen_risk";
 export { calculateMixingRisk } from "./mixing/mixing_risk";
 export { calculateShearRisk }  from "./shear/shear_risk";
 export { calculateCo2Risk }    from "./co2/co2_risk";
