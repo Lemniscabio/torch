@@ -980,6 +980,20 @@ function Co2Detail({ co2, derived, inputs, theme }: {
         finalValue: <>{fmt(scale.kla_co2, 1)} h<sup>-1</sup></>,
       },
       {
+        label: <>P<sub>CO₂</sub> in bulk liquid</>,
+        equation: <>P<sup>bulk</sup><sub>CO₂</sub> = P<sup>gas,avg</sup><sub>CO₂</sub> + CER / (k<sub>L</sub>a<sub>CO₂</sub> · H<sub>CO₂</sub>)</>,
+        substitution: <>{fmt(scale.pco2_gas_avg, 4)} + {fmt(scale.cer, 1)} / ({fmt(scale.kla_co2, 1)} · H<sub>CO₂</sub>)</>,
+        finalValue: <>{fmt(scale.pco2_bulk, 3)} bar</>,
+        note: "Log-mean gas-phase pCO₂ plus the mass-transfer driving force needed to strip CER (Henry's law).",
+      },
+      {
+        label: <>P<sub>CO₂</sub> at vessel bottom</>,
+        equation: <>P<sup>bottom</sup><sub>CO₂</sub> = P<sup>bulk</sup><sub>CO₂</sub> × (P<sub>atm</sub> + ρ·g·h<sub>L</sub>) / P<sub>atm</sub></>,
+        substitution: <>{fmt(scale.pco2_bulk, 3)} × (1 + {fmt(scale.dp_hydro / ATMOSPHERIC_PRESSURE_PA, 3)})</>,
+        finalValue: <>{fmt(scale.pco2_bottom, 3)} bar</>,
+        note: "Hydrostatic head raises pCO₂ at the bottom; this is the worst-case location for inhibition.",
+      },
+      {
         label: <>CO<sub>2</sub> partial pressure threshold</>,
         finalValue: <>{fmt(co2.pco2_critical ?? 0, 3)} bar</>,
         note: "Microbe-dependent threshold.",
