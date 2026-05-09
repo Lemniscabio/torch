@@ -223,6 +223,7 @@ export default function DashboardPage() {
       n_impellers_target: String(inp.n_impellers_target ?? inp.n_impellers),
       n_impellers_target_same_as_lab: (inp.n_impellers_target ?? inp.n_impellers) === inp.n_impellers,
       n_impellers_overridden: false,
+      n_impellers_target_overridden: false,
       impeller_type: inp.impeller_type,
       rpm: String(inp.rpm),
       vvm: String(inp.vvm),

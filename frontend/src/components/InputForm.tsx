@@ -26,6 +26,7 @@ import {
   NON_NEWTONIAN_BIOMASS_THRESHOLD,
 } from "@/lib/constants";
 import { runAssessment } from "@/lib/engine";
+import { deriveCoolingWaterOutlet, deriveMetabolicHeat } from "@/lib/engine/heat/heat_balance";
 import { setAssessment, setFormDraft } from "@/lib/store";
 import AnalyzingAnimation, { ANALYZING_DURATION_MS } from "@/components/AnalyzingAnimation";
 
@@ -124,6 +125,7 @@ export interface FormState {
   n_impellers_target: string;
   n_impellers_target_same_as_lab: boolean;
   n_impellers_overridden: boolean;
+  n_impellers_target_overridden: boolean;
   impeller_type: ImpellerType;
   rpm: string;
   vvm: string;
@@ -156,15 +158,16 @@ const INITIAL_STATE: FormState = {
   scaleup_criterion: "power_per_volume",
   vessel_model: "",
   h_d_lab: String(INPUT_DEFAULTS.h_d_lab),
-  h_d_target: "",
-  h_d_target_same_as_lab: false,
+  h_d_target: String(INPUT_DEFAULTS.h_d_lab),
+  h_d_target_same_as_lab: true,
   dt_ratio_lab: IMPELLER_CONSTANTS[INPUT_DEFAULTS.impeller_type].d_t_ratio.toFixed(1),
   dt_ratio_target: IMPELLER_CONSTANTS[INPUT_DEFAULTS.impeller_type].d_t_ratio.toFixed(1),
   dt_ratio_target_same_as_lab: true,
-  n_impellers: String(inferImpellers(INPUT_DEFAULTS.h_d_lab)),
-  n_impellers_target: String(inferImpellers(INPUT_DEFAULTS.h_d_lab)),
+  n_impellers: "1",
+  n_impellers_target: "1",
   n_impellers_target_same_as_lab: true,
   n_impellers_overridden: false,
+  n_impellers_target_overridden: false,
   impeller_type: INPUT_DEFAULTS.impeller_type,
   rpm: "",
   vvm: String(INPUT_DEFAULTS.vvm),
@@ -191,6 +194,12 @@ interface SoftWarning {
   message: string;
 }
 
+interface CoolingWaterOutletCheck {
+  active: boolean;
+  blocked: boolean;
+  tCwOut: number;
+}
+
 // --- Step definitions ---
 
 interface StepDef {
@@ -209,10 +218,10 @@ const ALL_STEPS: StepDef[] = [
 
 // --- Helpers ---
 
-function inferImpellers(hd: number): number {
-  if (hd > 2.5) return 3;
-  if (hd > 1.5) return 2;
-  return 1;
+function maxImpellersForGeometry(hd: number, dtRatio: number): number {
+  if (!isFinite(hd) || !isFinite(dtRatio) || hd <= 0 || dtRatio <= 0) return 1;
+  const maxFromClearance = Math.floor(hd / dtRatio - 1);
+  return Math.max(1, Math.min(4, maxFromClearance));
 }
 
 function inferHdFromVolume(volumeL: number): number {
@@ -384,27 +393,24 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
           }
         }
 
-        if (key === "h_d_lab" && !prev.n_impellers_overridden) {
-          const hd = parseFloat(value as string);
-          if (!isNaN(hd) && hd > 0)
-            next.n_impellers = String(inferImpellers(hd));
-        }
-
         if (key === "impeller_type") {
           const ratio = IMPELLER_CONSTANTS[value as ImpellerType].d_t_ratio.toFixed(1);
           next.dt_ratio_lab = ratio;
-          if (prev.dt_ratio_target_same_as_lab)
+          if (prev.dt_ratio_target_same_as_lab) {
             next.dt_ratio_target = ratio;
+          }
         }
 
         if (key === "h_d_target_same_as_lab" && value === true) {
           next.h_d_target = next.h_d_lab;
+          next.n_impellers_target_overridden = false;
         }
         if (key === "dt_ratio_target_same_as_lab" && value === true) {
           next.dt_ratio_target = next.dt_ratio_lab;
         }
         if (key === "n_impellers_target_same_as_lab" && value === true) {
           next.n_impellers_target = next.n_impellers;
+          next.n_impellers_target_overridden = false;
         }
 
         if (key === "h_d_lab" && prev.h_d_target_same_as_lab) {
@@ -415,6 +421,31 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
         }
         if (key === "n_impellers" && prev.n_impellers_target_same_as_lab) {
           next.n_impellers_target = String(value);
+        }
+
+        const labHd = parseFloat(next.h_d_lab);
+        const targetHd = parseFloat(next.h_d_target);
+
+        if (next.n_impellers_target_same_as_lab) {
+          next.n_impellers_target = next.n_impellers;
+        }
+
+        const labDt = parseFloat(next.dt_ratio_lab);
+        const targetDt = parseFloat(next.dt_ratio_target);
+        const labMax = maxImpellersForGeometry(labHd, labDt);
+        const targetMax = maxImpellersForGeometry(targetHd, targetDt);
+
+        const labCount = parseInt(next.n_impellers, 10);
+        if (isFinite(labCount) && labCount > labMax) {
+          next.n_impellers = String(labMax);
+          if (next.n_impellers_target_same_as_lab) {
+            next.n_impellers_target = String(labMax);
+          }
+        }
+
+        const targetCount = parseInt(next.n_impellers_target, 10);
+        if (isFinite(targetCount) && targetCount > targetMax) {
+          next.n_impellers_target = String(targetMax);
         }
 
         return next;
@@ -457,6 +488,17 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
     if (lab > 0 && target > 0) return target / lab;
     return null;
   }, [form.v_lab, form.v_target]);
+
+  const impellerGeometryLimits = useMemo(() => {
+    const labHd = parseFloat(form.h_d_lab);
+    const labDt = parseFloat(form.dt_ratio_lab);
+    const targetHd = parseFloat(form.h_d_target);
+    const targetDt = parseFloat(form.dt_ratio_target);
+    return {
+      labMax: maxImpellersForGeometry(labHd, labDt),
+      targetMax: maxImpellersForGeometry(targetHd, targetDt),
+    };
+  }, [form.h_d_lab, form.dt_ratio_lab, form.h_d_target, form.dt_ratio_target]);
 
   const ourEstimation = useMemo(() => {
     if (form.our_mode !== "estimate") return null;
@@ -523,6 +565,45 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
     return { entered, total: totalParams, estimated, confidence, label: confidenceLabels[confidence] };
   }, [form]);
 
+  const coolingWaterOutletCheck = useMemo((): CoolingWaterOutletCheck => {
+    const tProcess = parseFloat(form.temperature);
+    const tCwIn = parseFloat(form.t_cw_inlet);
+    const flowrate = parseFloat(form.cooling_water_flowrate);
+    const vTarget = parseFloat(form.v_target);
+    const species = form.organism_species;
+
+    if (!species || isNaN(tProcess) || isNaN(tCwIn) || isNaN(flowrate) || flowrate <= 0 || isNaN(vTarget) || vTarget <= 0) {
+      return { active: false, blocked: false, tCwOut: NaN };
+    }
+
+    let ourPeak: number | null = null;
+    if (form.our_mode === "measured") {
+      const measured = parseFloat(form.our_measured);
+      if (!isNaN(measured) && measured > 0) ourPeak = measured;
+    } else if (form.biomass_density_category) {
+      const byCategory = getOurPeakByCategory(species, form.biomass_density_category);
+      const bounds = getOurPeakBounds(species);
+      ourPeak = byCategory ?? bounds?.lower ?? null;
+    }
+
+    if (ourPeak == null || !isFinite(ourPeak) || ourPeak <= 0) {
+      return { active: false, blocked: false, tCwOut: NaN };
+    }
+
+    const qMetabolicKw = deriveMetabolicHeat(ourPeak, vTarget, species);
+    const { t_cw_out: tCwOut } = deriveCoolingWaterOutlet(qMetabolicKw, flowrate, tCwIn);
+    return { active: true, blocked: tCwOut >= tProcess, tCwOut };
+  }, [
+    form.temperature,
+    form.t_cw_inlet,
+    form.cooling_water_flowrate,
+    form.v_target,
+    form.organism_species,
+    form.our_mode,
+    form.our_measured,
+    form.biomass_density_category,
+  ]);
+
   // --- Per-step validation ---
 
   const validateStep = useCallback(
@@ -562,11 +643,18 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
           if (!form.our_measured) errs.our_measured = "Measured OUR value is required.";
           else { const r = getInlineRangeError("our_measured", form); if (r) errs.our_measured = r; }
         }
+        const cwFlow = parseFloat(form.cooling_water_flowrate);
+        if (isNaN(cwFlow) || cwFlow <= 0) {
+          errs.cooling_water_flowrate = "Cooling-water flowrate must be greater than zero.";
+        } else if (coolingWaterOutletCheck.active && coolingWaterOutletCheck.blocked) {
+          errs.cooling_water_flowrate =
+            `Cooling-water outlet is estimated at ${coolingWaterOutletCheck.tCwOut.toFixed(1)}°C, which is at or above process temperature. Increase cooling-water flowrate.`;
+        }
       }
 
       return errs;
     },
-    [form]
+    [form, coolingWaterOutletCheck]
   );
 
   const validate = useCallback((): ValidationErrors => {
@@ -1018,7 +1106,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
             {activeStepDef.id === "c" && (
               <div className="space-y-5">
                 <p className="text-[11px] text-silver-600 -mt-1">
-                  Describe your <strong className="text-silver-400">lab vessel</strong>, then set target-scale geometry and impeller count directly.
+                  Describe your <strong className="text-silver-400">lab vessel</strong>, then set target-scale geometry. Target H/D, D/T, and impeller count start synchronized to lab by default.
                 </p>
 
                 {/* Vessel model */}
@@ -1163,25 +1251,25 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                   <div id="n_impellers">
                     <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
                       Number of impellers (lab vessel)
-                      {!form.n_impellers_overridden && form.n_impellers && (
-                        <span className="text-silver-600 font-normal normal-case tracking-normal italic ml-2">
-                          ~auto-inferred from H/D
-                        </span>
-                      )}
                     </label>
                     <div className="flex gap-2">
                       {[1, 2, 3, 4].map((n) => (
                         <button key={n} type="button"
-                          onClick={() => { set("n_impellers", String(n)); set("n_impellers_overridden", true); }}
+                          disabled={n > impellerGeometryLimits.labMax}
+                          title={n > impellerGeometryLimits.labMax ? "Insufficient H/T clearance for this many impellers." : undefined}
+                          onClick={() => { set("n_impellers", String(n)); }}
                           className={`w-11 h-11 rounded-xl text-sm font-mono transition-all duration-200 ${
                             form.n_impellers === String(n)
                               ? "option-surface option-surface--selected text-silver-100"
                               : "option-surface text-silver-500"
-                          }`}>
+                          } ${n > impellerGeometryLimits.labMax ? "opacity-40 cursor-not-allowed" : ""}`}>
                           {n}
                         </button>
                       ))}
                     </div>
+                    <p className="text-[10px] text-silver-600 mt-1.5">
+                      Geometry limit: up to {impellerGeometryLimits.labMax} impeller{impellerGeometryLimits.labMax > 1 ? "s" : ""} for current H/D and D/T.
+                    </p>
                   </div>
 
                   <div id="n_impellers_target" className="min-h-[112px]">
@@ -1200,19 +1288,32 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                         <button
                           key={`target-${n}`}
                           type="button"
+                          disabled={n > impellerGeometryLimits.targetMax}
+                          title={n > impellerGeometryLimits.targetMax ? "Insufficient H/T clearance for this many impellers." : undefined}
                           onClick={() => { set("n_impellers_target_same_as_lab", false); set("n_impellers_target", String(n)); }}
                           className={`text-[11px] px-2.5 py-1.5 rounded-lg font-mono transition-all duration-200 ${
                             form.n_impellers_target === String(n)
                               ? "option-surface-sm option-surface--selected text-silver-100"
                               : "option-surface-sm text-silver-500"
-                          }`}
+                          } ${n > impellerGeometryLimits.targetMax ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
                           {n}
                         </button>
                       ))}
                     </div>
+                    <p className="text-[10px] text-silver-600 mt-1.5">
+                      Geometry limit: up to {impellerGeometryLimits.targetMax} impeller{impellerGeometryLimits.targetMax > 1 ? "s" : ""} for current H/D and D/T.
+                    </p>
                   </div>
                 </div>
+
+                {(impellerGeometryLimits.labMax < 4 || impellerGeometryLimits.targetMax < 4) && (
+                  <div className="glass-panel-sm border-risk-moderate/30 bg-risk-moderate/[0.06] px-3.5 py-3">
+                    <p className="text-[11px] text-risk-moderate leading-relaxed">
+                      Impeller count is auto-limited by vessel clearance from H/D and D/T. Increase H/D or reduce D/T to accommodate additional impellers.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1409,8 +1510,20 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                         <p className="text-[10px] text-silver-600 mt-1">
                           Used to compute cooling capacity and outlet temperature.
                         </p>
+                        {fieldError("cooling_water_flowrate")}
                       </div>
                     </div>
+                    {coolingWaterOutletCheck.active && coolingWaterOutletCheck.blocked && (
+                      <div className="glass-panel-sm border-risk-moderate/20 bg-risk-moderate/[0.04] text-risk-moderate text-sm px-4 py-2.5 flex items-start gap-2">
+                        <svg className="w-4 h-4 mt-0.5 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 11a1 1 0 110-2 1 1 0 010 2zm.75-3.5a.75.75 0 01-1.5 0V5a.75.75 0 011.5 0v3.5z" />
+                        </svg>
+                        <span>
+                          Estimated cooling-water outlet temperature: {coolingWaterOutletCheck.tCwOut.toFixed(1)}°C.
+                          {` This is at or above process temperature (${parseFloat(form.temperature).toFixed(1)}°C). Increase cooling-water flowrate to continue.`}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1433,7 +1546,15 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
             </div>
             <div className="flex items-center gap-3">
               {isLastStep ? (
-                <button type="submit" className="btn-primary px-6 py-2.5 text-sm font-medium flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={coolingWaterOutletCheck.active && coolingWaterOutletCheck.blocked}
+                  className={`btn-primary px-6 py-2.5 text-sm font-medium flex items-center gap-2 ${
+                    coolingWaterOutletCheck.active && coolingWaterOutletCheck.blocked
+                      ? "opacity-60 cursor-not-allowed"
+                      : ""
+                  }`}
+                >
                   <span className="relative z-10 flex items-center gap-2">
                     Run risk assessment
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
