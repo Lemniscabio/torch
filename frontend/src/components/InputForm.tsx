@@ -304,7 +304,7 @@ function getInlineRangeError(key: keyof FormState, f: FormState): string | undef
       const raw = f[key];
       if (!raw.trim()) return undefined;
       const ratio = parseFloat(raw);
-      if (isNaN(ratio) || ratio < 0.1 || ratio > 0.8) return "D/T ratio must be between 0.1 and 0.8.";
+      if (isNaN(ratio) || ratio < 0.1 || ratio > 0.8) return "D_i/D ratio must be between 0.1 and 0.8.";
       return undefined;
     }
     case "biomass": {
@@ -1112,7 +1112,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
             {activeStepDef.id === "c" && (
               <div className="space-y-5">
                 <p className="text-[11px] text-silver-600 -mt-1">
-                  Describe your <strong className="text-silver-400">lab vessel</strong>, then set target-scale geometry. Target H/D, D/T, and impeller count start synchronized to lab by default.
+                  Describe your <strong className="text-silver-400">lab vessel</strong>, then set target-scale geometry. Target H/D, D_i/D, and impeller count start synchronized to lab by default.
                 </p>
 
                 {/* Impeller type */}
@@ -1135,7 +1135,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                     ))}
                   </div>
                   <p className="text-[11px] text-silver-600 mt-1.5">
-                    Default D/T: {IMPELLER_CONSTANTS[form.impeller_type].d_t_ratio.toFixed(1)} | Np: {IMPELLER_CONSTANTS[form.impeller_type].np}
+                    Default D_i/D: {IMPELLER_CONSTANTS[form.impeller_type].d_t_ratio.toFixed(1)} | Np: {IMPELLER_CONSTANTS[form.impeller_type].np}
                   </p>
                 </div>
 
@@ -1199,11 +1199,11 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                   </div>
                 </div>
 
-                {/* D/T ratios */}
+                {/* D_i/D ratios */}
                 <div className="grid grid-cols-2 gap-4">
                   <div id="dt_ratio_lab">
                     <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
-                      D/T ratio (lab vessel)
+                      D_i/D ratio (lab vessel)
                     </label>
                     <input type="number" value={form.dt_ratio_lab}
                       onChange={(e) => handleBoundedChange("dt_ratio_lab", e.target.value)}
@@ -1212,7 +1212,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                   </div>
                   <div id="dt_ratio_target" className="min-h-[112px]">
                     <label className="block text-[11px] font-medium uppercase tracking-[0.08em] text-silver-500 mb-2">
-                      D/T ratio (target vessel)
+                      D_i/D ratio (target vessel)
                     </label>
                     <button
                       type="button"
@@ -1263,7 +1263,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                       ))}
                     </div>
                     <p className="text-[10px] text-silver-600 mt-1.5">
-                      Geometry limit: up to {impellerGeometryLimits.labMax} impeller{impellerGeometryLimits.labMax > 1 ? "s" : ""} for current H/D and D/T.
+                      Geometry limit: up to {impellerGeometryLimits.labMax} impeller{impellerGeometryLimits.labMax > 1 ? "s" : ""} for current H/D and D_i/D.
                     </p>
                   </div>
 
@@ -1297,7 +1297,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                       ))}
                     </div>
                     <p className="text-[10px] text-silver-600 mt-1.5">
-                      Geometry limit: up to {impellerGeometryLimits.targetMax} impeller{impellerGeometryLimits.targetMax > 1 ? "s" : ""} for current H/D and D/T.
+                      Geometry limit: up to {impellerGeometryLimits.targetMax} impeller{impellerGeometryLimits.targetMax > 1 ? "s" : ""} for current H/D and D_i/D.
                     </p>
                   </div>
                 </div>
@@ -1305,7 +1305,7 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                 {(impellerGeometryLimits.labMax < 4 || impellerGeometryLimits.targetMax < 4) && (
                   <div className="glass-panel-sm border-risk-moderate/30 bg-risk-moderate/[0.06] px-3.5 py-3">
                     <p className="text-[11px] text-risk-moderate leading-relaxed">
-                      Impeller count is auto-limited by vessel clearance from H/D and D/T. Increase H/D or reduce D/T to accommodate additional impellers.
+                      Impeller count is auto-limited by vessel clearance from H/D and D_i/D. Increase H/D or reduce D_i/D to accommodate additional impellers.
                     </p>
                   </div>
                 )}

@@ -6,11 +6,11 @@ A web application that takes lab-scale fermentation process data and produces a 
 
 | Domain | What it evaluates |
 |--------|-------------------|
-| **Oxygen Transfer (OTR)** | Whether the target vessel can deliver sufficient kLa to meet peak oxygen demand |
-| **Mixing** | How mixing time scales and whether substrate/pH gradients will form |
+| **Oxygen Transfer** | Whether the oxygen transfer rate is sufficent to satisfy microbial oxygen uptake rate |
+| **Mixing** | How mixing time scales and whether gradients will form |
 | **Shear Stress** | Whether impeller tip speed at the target scale exceeds organism tolerance |
 | **CO₂ Accumulation** | Dissolved CO₂ buildup at the vessel bottom due to hydrostatic pressure |
-| **Heat Removal** | Whether jacket cooling capacity can handle metabolic heat at scale |
+| **Heat Removal** | Whether reactor cooling capacity can handle metabolic heat at scale |
 
 Each domain produces a score: **Low**, **Moderate**, **High**, or **Critical**, plus a primary bottleneck statement with actionable guidance.
 
@@ -31,8 +31,10 @@ Each domain produces a score: **Low**, **Moderate**, **High**, or **Critical**, 
 ```
 .
 ├── backend/                    # Express API server
+│   ├── package.json
 │   ├── prisma/
-│   │   └── schema.prisma       # User + Assessment models
+│   │   ├── schema.prisma       # User + Assessment models
+│   │   └── migrations/         # Database migrations
 │   ├── prisma.config.ts        # Prisma adapter config
 │   └── src/
 │       ├── app.ts              # Server entry point
@@ -51,6 +53,7 @@ Each domain produces a score: **Low**, **Moderate**, **High**, or **Critical**, 
 │       │   ├── auth.route.ts         # POST /api/auth
 │       │   ├── assessment.route.ts   # GET/POST /api/assessments
 │       │   └── user.route.ts         # GET /api/user
+│       ├── generated/prisma/         # Generated Prisma client
 │       ├── helpers/
 │       │   └── email-validation.ts   # Work email gating
 │       └── middlewares/
@@ -58,6 +61,11 @@ Each domain produces a score: **Low**, **Moderate**, **High**, or **Critical**, 
 │           └── error.middleware.ts
 │
 ├── frontend/                   # Next.js app
+│   ├── package.json
+│   ├── prisma/
+│   │   └── schema.prisma       # Frontend API route Prisma schema
+│   ├── public/
+│   │   └── fonts/              # PDF font assets
 │   └── src/
 │       ├── app/
 │       │   ├── layout.tsx      # Root layout + ThemeProvider
@@ -65,7 +73,13 @@ Each domain produces a score: **Low**, **Moderate**, **High**, or **Critical**, 
 │       │   ├── assess/         # Assessment form page
 │       │   ├── results/        # Results display page
 │       │   ├── dashboard/      # User dashboard (history)
-│       │   └── report/         # PDF report page
+│       │   ├── example/        # Preloaded example assessment
+│       │   ├── report/         # PDF report page
+│       │   └── api/            # Next.js API routes
+│       │       ├── auth/
+│       │       ├── user/
+│       │       ├── health/
+│       │       └── assessments/
 │       ├── components/
 │       │   ├── InputForm.tsx          # Multi-step wizard (A–E)
 │       │   ├── ResultsDashboard.tsx   # Full results with domain cards
@@ -79,21 +93,29 @@ Each domain produces a score: **Low**, **Moderate**, **High**, or **Critical**, 
 │       │   └── CollapsibleSection.tsx # Expandable detail sections
 │       └── lib/
 │           ├── api.ts          # Backend URL helper + JWT token management
+│           ├── auth.ts         # Frontend API auth helpers
+│           ├── db.ts           # Frontend API Prisma adapter
+│           ├── email-validation.ts
 │           ├── store.ts        # Client-side state (sessionStorage-backed)
 │           ├── types/index.ts  # All TypeScript interfaces
-│           ├── constants/index.ts  # Organism defaults, thresholds, tables
+│           ├── constants/      # Defaults, equipment, organisms, scoring, physical tables
 │           └── engine/
-│               ├── index.ts        # runAssessment() orchestrator
-│               ├── derivations.ts  # D1–D7 derived parameters
-│               ├── otr.ts          # R1: Oxygen transfer risk
-│               ├── mixing.ts       # R2: Mixing risk
-│               ├── shear.ts        # R3: Shear stress risk
-│               ├── co2.ts          # R4: CO₂ accumulation risk
-│               └── heat.ts         # R5: Heat removal risk
+│               ├── index.ts          # runAssessment() orchestrator
+│               ├── reactor_configs.ts
+│               ├── derivations/      # D1–D7 derived parameters
+│               ├── scaleup/          # Scale-up operating-point criteria
+│               ├── correlations/     # kLa and gassed-power correlations
+│               ├── oxygen/           # R1: Oxygen transfer risk
+│               ├── mixing/           # R2: Mixing risk
+│               ├── shear/            # R3: Shear stress risk
+│               ├── co2/              # R4: CO₂ accumulation risk
+│               ├── heat/             # R5: Heat removal risk
+│               └── growth/           # Growth-kinetics utilities
 │
 ├── .env                        # Root env (DATABASE_URL, PORT, URLs)
 ├── CLAUDE.md                   # AI assistant project context
-└── docs/                       # Dev spec and PRD
+├── docs/                       # Backend flow and methodology documents
+└── ignore/                     # Ignored local dependency snapshot
 ```
 
 ## Prerequisites
@@ -222,4 +244,3 @@ Themes are controlled by CSS custom properties defined in `globals.css`, toggled
 | `dev` | `next dev` | Start Next.js dev server |
 | `build` | `next build` | Production build |
 | `start` | `next start` | Serve production build |
-
