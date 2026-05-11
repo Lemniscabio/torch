@@ -34,10 +34,10 @@ export const BIOMASS_DENSITY_REPRESENTATIVE_CDW: Record<BiomassDensityCategory, 
 } as const;
 
 export const OUR_PEAK_BOUNDS: Partial<Record<OrganismSpecies, OurPeakBounds>> = {
-  e_coli:       { lower: 100, upper: 350 },
-  p_pastoris:   { lower: 100, upper: 250 },
-  s_cerevisiae: { lower: 50,  upper: 150 },
-  b_subtilis:   { lower: 40,  upper: 180 },
+  e_coli:       { lower: 70, upper: 150 },
+  p_pastoris:   { lower: 25, upper: 160 },
+  s_cerevisiae: { lower: 20,  upper: 55 },
+  b_subtilis:   { lower: 35,  upper: 80 },
 } as const;
 
 export function getBiomassDensityCategory(
