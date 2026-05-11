@@ -1339,7 +1339,7 @@ const MODIFICATIONS: ModificationDefinition[] = [
   { id: "decrease_impeller_rpm", label: "Decrease impeller RPM", domains: ["shear"], section: "operational" },
   { id: "increase_aeration_rate", label: "Increase aeration rate", domains: ["otr", "co2", "heat"], section: "operational" },
   { id: "increase_oxygen_saturation", label: "Increase oxygen saturation", domains: ["otr"], section: "operational" },
-  { id: "increase_impeller_diameter", label: "Increase impeller diameter", domains: ["otr", "mixing", "shear", "co2", "heat"], section: "design" },
+  { id: "increase_impeller_diameter", label: "Increase impeller diameter", domains: ["otr", "mixing", "co2", "heat"], section: "design" },
   { id: "decrease_impeller_diameter", label: "Decrease impeller diameter", domains: ["shear", "mixing"], section: "design" },
   { id: "switch_to_rushton_impeller", label: "Switch to Rushton impeller", domains: ["otr", "mixing", "co2", "heat"], section: "design" },
   { id: "switch_to_pitched_blade_impeller", label: "Switch to Pitched blade impeller", domains: ["otr", "mixing", "co2", "heat"], section: "design" },

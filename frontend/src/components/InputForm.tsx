@@ -23,8 +23,10 @@ import {
   getOurPeakBounds,
   getOurPeakByCategory,
   getRepresentativeBiomassCdw,
+  getScaleupOperatingRange,
   NON_NEWTONIAN_BIOMASS_THRESHOLD,
 } from "@/lib/constants";
+import type { NumericRange, ScaleupOperatingRange } from "@/lib/constants";
 import { runAssessment } from "@/lib/engine";
 import { deriveCoolingWaterOutlet, deriveMetabolicHeat } from "@/lib/engine/heat/heat_balance";
 import { setAssessment, setFormDraft } from "@/lib/store";
@@ -241,6 +243,19 @@ function densityCategoryLabel(category: BiomassDensityCategory): string {
   return BIOMASS_DENSITY_OPTIONS.find((option) => option.value === category)?.label ?? category;
 }
 
+function operatingRangeForVolumeValue(volume: string): ScaleupOperatingRange | null {
+  const v = parseFloat(volume);
+  return !isNaN(v) && v > 0 ? getScaleupOperatingRange(v) : null;
+}
+
+function formatOperatingBound(value: number): string {
+  return Number.isInteger(value) ? value.toLocaleString("en-GB") : value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+}
+
+function formatOperatingRange(range: NumericRange, units: string): string {
+  return `${formatOperatingBound(range.min)}-${formatOperatingBound(range.max)} ${units}`;
+}
+
 function canEstimateOur(species: OrganismSpecies | ""): boolean {
   return species ? getOurPeakBounds(species as OrganismSpecies) !== undefined : true;
 }
@@ -282,13 +297,19 @@ function getInlineRangeError(key: keyof FormState, f: FormState): string | undef
       if (!f.rpm.trim()) return undefined;
       const r = parseFloat(f.rpm);
       if (r <= 0) return "RPM must be greater than zero.";
-      if (r > 3000) return "RPM must not exceed 3 000.";
+      const labRange = operatingRangeForVolumeValue(f.v_lab);
+      if (labRange && (r < labRange.max_rpm.min || r > labRange.max_rpm.max)) {
+        return `For the selected lab scale (${labRange.scale_label} range), RPM must be ${formatOperatingRange(labRange.max_rpm, "rpm")}.`;
+      }
       return undefined;
     }
     case "vvm": {
       if (!f.vvm.trim()) return undefined;
       const v = parseFloat(f.vvm);
-      if (v < 0.1 || v > 5.0) return "VVM must be between 0.1 and 5.0.";
+      const labRange = operatingRangeForVolumeValue(f.v_lab);
+      if (labRange && (v < labRange.max_aeration_vvm.min || v > labRange.max_aeration_vvm.max)) {
+        return `For the selected lab scale (${labRange.scale_label} range), aeration must be ${formatOperatingRange(labRange.max_aeration_vvm, "vvm")}.`;
+      }
       return undefined;
     }
     case "h_d_lab":
@@ -473,6 +494,10 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
         if (key === "v_lab") {
           const vte = getInlineRangeError("v_target", nextForm);
           if (vte) n.v_target = vte; else delete n.v_target;
+          const rpmError = getInlineRangeError("rpm", nextForm);
+          if (rpmError) n.rpm = rpmError; else delete n.rpm;
+          const vvmError = getInlineRangeError("vvm", nextForm);
+          if (vvmError) n.vvm = vvmError; else delete n.vvm;
         }
         return n;
       });
@@ -488,6 +513,16 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
     if (lab > 0 && target > 0) return target / lab;
     return null;
   }, [form.v_lab, form.v_target]);
+
+  const labOperatingRange = useMemo(
+    () => operatingRangeForVolumeValue(form.v_lab),
+    [form.v_lab],
+  );
+
+  const targetOperatingRange = useMemo(
+    () => operatingRangeForVolumeValue(form.v_target),
+    [form.v_target],
+  );
 
   const impellerGeometryLimits = useMemo(() => {
     const labHd = parseFloat(form.h_d_lab);
@@ -1105,6 +1140,30 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                     </div>
                   </div>
                 )}
+                {(labOperatingRange || targetOperatingRange) && (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {labOperatingRange && (
+                      <div className="glass-panel-sm px-3.5 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.08em] text-silver-600 mb-1">
+                          Lab operating envelope
+                        </p>
+                        <p className="text-xs text-silver-400">
+                          {labOperatingRange.scale_label} ranges: {formatOperatingRange(labOperatingRange.max_rpm, "RPM")} | {formatOperatingRange(labOperatingRange.max_aeration_vvm, "vvm")}
+                        </p>
+                      </div>
+                    )}
+                    {targetOperatingRange && (
+                      <div className="glass-panel-sm px-3.5 py-3">
+                        <p className="text-[10px] uppercase tracking-[0.08em] text-silver-600 mb-1">
+                          Target operating envelope
+                        </p>
+                        <p className="text-xs text-silver-400">
+                          {targetOperatingRange.scale_label} ranges: {formatOperatingRange(targetOperatingRange.max_rpm, "RPM")} | {formatOperatingRange(targetOperatingRange.max_aeration_vvm, "vvm")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1147,7 +1206,14 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                     </label>
                     <input type="number" value={form.rpm}
                       onChange={(e) => handleBoundedChange("rpm", e.target.value)}
-                      className={inputCls("rpm")} placeholder="At highest-demand point" min={0} max={3000} />
+                      className={inputCls("rpm")} placeholder="At highest-demand point"
+                      min={labOperatingRange?.max_rpm.min ?? 0}
+                      max={labOperatingRange?.max_rpm.max ?? 3000} />
+                    {labOperatingRange && (
+                      <p className="text-[10px] text-silver-600 mt-1">
+                        Allowed for {labOperatingRange.scale_label} lab scale: {formatOperatingRange(labOperatingRange.max_rpm, "rpm")}.
+                      </p>
+                    )}
                     {fieldError("rpm")}
                   </div>
                   <div id="vvm">
@@ -1156,7 +1222,15 @@ export default function InputForm({ onStateChange, initialValues }: InputFormPro
                     </label>
                     <input type="number" value={form.vvm}
                       onChange={(e) => handleBoundedChange("vvm", e.target.value)}
-                      className={inputCls("vvm")} min={0.1} max={5} step="0.1" />
+                      className={inputCls("vvm")}
+                      min={labOperatingRange?.max_aeration_vvm.min ?? 0.1}
+                      max={labOperatingRange?.max_aeration_vvm.max ?? 5}
+                      step="0.1" />
+                    {labOperatingRange && (
+                      <p className="text-[10px] text-silver-600 mt-1">
+                        Allowed for {labOperatingRange.scale_label} lab scale: {formatOperatingRange(labOperatingRange.max_aeration_vvm, "vvm")}.
+                      </p>
+                    )}
                     {fieldError("vvm")}
                   </div>
                 </div>

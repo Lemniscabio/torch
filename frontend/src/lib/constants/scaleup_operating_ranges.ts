@@ -30,8 +30,8 @@ export const SCALEUP_OPERATING_RANGES: ScaleupOperatingRange[] = [
     volume_max_l: Math.sqrt(10),
     max_pv_kw_m3: { min: 3, max: 8 },
     max_pv_w_m3: { min: 3000, max: 8000 },
-    max_rpm: { min: 800, max: 1500 },
-    max_aeration_vvm: { min: 1.0, max: 2.0 },
+    max_rpm: { min: 800, max: 1200 },
+    max_aeration_vvm: { min: 0.5, max: 2.0 },
   },
   {
     scale_label: "10 L",
@@ -41,7 +41,7 @@ export const SCALEUP_OPERATING_RANGES: ScaleupOperatingRange[] = [
     max_pv_kw_m3: { min: 2.5, max: 6 },
     max_pv_w_m3: { min: 2500, max: 6000 },
     max_rpm: { min: 400, max: 900 },
-    max_aeration_vvm: { min: 0.8, max: 1.5 },
+    max_aeration_vvm: { min: 0.5, max: 1.5 },
   },
   {
     scale_label: "100 L",
@@ -51,7 +51,7 @@ export const SCALEUP_OPERATING_RANGES: ScaleupOperatingRange[] = [
     max_pv_kw_m3: { min: 1.5, max: 4 },
     max_pv_w_m3: { min: 1500, max: 4000 },
     max_rpm: { min: 200, max: 500 },
-    max_aeration_vvm: { min: 0.6, max: 1.2 },
+    max_aeration_vvm: { min: 0.3, max: 1.0 },
   },
   {
     scale_label: "1,000 L",
@@ -61,7 +61,7 @@ export const SCALEUP_OPERATING_RANGES: ScaleupOperatingRange[] = [
     max_pv_kw_m3: { min: 0.8, max: 3 },
     max_pv_w_m3: { min: 800, max: 3000 },
     max_rpm: { min: 100, max: 250 },
-    max_aeration_vvm: { min: 0.5, max: 1.0 },
+    max_aeration_vvm: { min: 0.2, max: 0.8 },
   },
   {
     scale_label: "10,000 L",
@@ -71,7 +71,7 @@ export const SCALEUP_OPERATING_RANGES: ScaleupOperatingRange[] = [
     max_pv_kw_m3: { min: 0.5, max: 2 },
     max_pv_w_m3: { min: 500, max: 2000 },
     max_rpm: { min: 50, max: 150 },
-    max_aeration_vvm: { min: 0.3, max: 1.0 },
+    max_aeration_vvm: { min: 0.1, max: 0.5 },
   },
 ];
 
