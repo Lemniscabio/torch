@@ -137,12 +137,12 @@ Vercel auto-builds on push to the watched branch. No GCP work. The single env va
 - [x] Auth via JWT (bcrypt) — no Firebase yet, deliberately
 - [x] `tea-core` engine includes new `estimate_mu` OUR mode (µ-based, gated to species with Y_X/O₂ data)
 - [x] Frontend wires the new mode through schema, mapper, and Step 4 UI
+- [x] Scale-dependent input limits in Step 3 wired up. `tea-core` exports `SCALEUP_OPERATING_RANGES` (binned by volume: 1, 10, 100, 1k, 10k L) plus `getScaleupOperatingRange(v)` and `maxImpellersForGeometry(hd)`. Frontend reads them: VesselStep shows a per-scale max-RPM / max-VVM hint, schema enforces those maxes as hard errors at submit. `maxImpellersForGeometry` is now the single source of truth (was previously duplicated in the frontend).
 
 ## What's left
 
 ### Must-do before going wider
 - **Billing budget alert.** Three minutes in the GCP console. Catches runaway costs from bugs/abuse.
-- **Scale-dependent input limits in Step 3.** RPM/VVM/D/T bounds should tighten as `v_target` grows. Numbers don't exist anywhere in the codebase yet — need methodology owner to define the rules first, then `tea-core` adds them as either lookup tables or pure formulas, then the frontend reads via a `getProcessBounds(v_target, …)` helper.
 
 ### Should-do soon
 - **Custom domain** — `api.torch.lemnisca.bio` → Cloud Run, `torch.lemnisca.bio` → Vercel. Requires DNS access at lemnisca.bio.
@@ -170,7 +170,7 @@ Vercel auto-builds on push to the watched branch. No GCP work. The single env va
 | Why is Cloud SQL always on? | Same doc, §"Living with the deploy" |
 | Where does the math live? | `torch_product/packages/tea-core/src/engine/` |
 | Where are the risk thresholds? | `torch_product/packages/tea-core/src/constants/scoring.ts` |
-| Where are the (currently flat) input bounds? | `torch_product/packages/tea-core/src/constants/input_bounds.ts` |
+| Where are the input bounds? | `torch_product/packages/tea-core/src/constants/input_bounds.ts` (flat) + `scaleup_operating_ranges.ts` (scale-binned RPM / VVM / P/V envelopes) |
 | Where is the API contract? | `torch_product/backend/src/routes/` + controllers |
 | Where is the DB schema? | `torch_product/backend/prisma/schema.prisma` |
 | App-level layout, local dev specifics | `torch_product/README.md` |

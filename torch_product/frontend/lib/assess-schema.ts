@@ -9,7 +9,11 @@
 // truth lives there; if those change, fix here too (and add a snapshot test).
 
 import { z } from 'zod';
-import { PROCESS_INPUT_BOUNDS, inferHdFromVolume } from '@torch/core';
+import {
+  PROCESS_INPUT_BOUNDS,
+  inferHdFromVolume,
+  getScaleupOperatingRange,
+} from '@torch/core';
 
 export { inferHdFromVolume };
 
@@ -224,6 +228,23 @@ export const fullAssessSchema = z
         path: ['feeding_frequency'],
         message: 'Pick a feeding frequency.',
       });
+    }
+    if (typeof d.v_lab === 'number' && d.v_lab > 0) {
+      const range = getScaleupOperatingRange(d.v_lab);
+      if (typeof d.rpm === 'number' && d.rpm > range.max_rpm.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['rpm'],
+          message: `RPM exceeds the ${range.scale_label} envelope (max ${range.max_rpm.max}).`,
+        });
+      }
+      if (typeof d.vvm === 'number' && d.vvm > range.max_aeration_vvm.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['vvm'],
+          message: `VVM exceeds the ${range.scale_label} envelope (max ${range.max_aeration_vvm.max}).`,
+        });
+      }
     }
   });
 

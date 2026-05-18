@@ -6,17 +6,15 @@
 
 import { useEffect } from 'react';
 import { useFormContext } from 'react-hook-form';
-import { IMPELLER_CONSTANTS, type ImpellerType } from '@torch/core';
+import {
+  IMPELLER_CONSTANTS,
+  getScaleupOperatingRange,
+  maxImpellersForGeometry,
+  type ImpellerType,
+} from '@torch/core';
 import { Field } from '@/components/ui/Field';
 import { NumberInput } from '@/components/ui/NumberInput';
 import type { AssessFormValues } from '@/lib/assess-schema';
-
-// Geometry limit on impeller count: spacing ≥ 0.8·D, so n_max = floor(H/D / 0.8),
-// clamped to 1–4 because we don't model anything outside that envelope.
-function maxImpellersForGeometry(hd: number): number {
-  if (!Number.isFinite(hd) || hd <= 0) return 4;
-  return Math.max(1, Math.min(4, Math.floor(hd / 0.8)));
-}
 
 const HD_PRESETS = [1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0] as const;
 const DT_PRESETS = [0.2, 0.33, 0.4, 0.5] as const;
@@ -52,6 +50,12 @@ export function VesselStep() {
   const nImpellers = watch('n_impellers');
   const nTarget = watch('n_impellers_target');
   const nSame = watch('n_impellers_target_same_as_lab') ?? true;
+
+  // Scale-dependent operating envelopes — bound RPM / VVM against the
+  // bin the user's lab volume falls into.
+  const vLab = watch('v_lab');
+  const labRange =
+    typeof vLab === 'number' && vLab > 0 ? getScaleupOperatingRange(vLab) : null;
 
   // Impeller type change → sync lab D/T to that impeller's default, and
   // sync target D/T if "same as lab" is on.
@@ -123,7 +127,16 @@ export function VesselStep() {
           Operating point at peak oxygen demand
         </p>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Field label="Agitation (RPM)" htmlFor="rpm" error={errors.rpm?.message}>
+          <Field
+            label="Agitation (RPM)"
+            htmlFor="rpm"
+            hint={
+              labRange
+                ? `For ${labRange.scale_label} vessels: up to ${labRange.max_rpm.max} rpm.`
+                : undefined
+            }
+            error={errors.rpm?.message}
+          >
             <NumberInput
               id="rpm"
               unit="rpm"
@@ -131,7 +144,16 @@ export function VesselStep() {
               {...register('rpm', { valueAsNumber: true })}
             />
           </Field>
-          <Field label="Gassing (VVM)" htmlFor="vvm" error={errors.vvm?.message}>
+          <Field
+            label="Gassing (VVM)"
+            htmlFor="vvm"
+            hint={
+              labRange
+                ? `For ${labRange.scale_label} vessels: up to ${labRange.max_aeration_vvm.max} vvm.`
+                : undefined
+            }
+            error={errors.vvm?.message}
+          >
             <NumberInput
               id="vvm"
               unit="vvm"
