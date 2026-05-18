@@ -36,6 +36,47 @@ export const PCO2_CRITICAL: Record<OrganismSpecies, number> = {
   other_yeast:    0.10,
 };
 
+// --- Oxygen Yield Coefficients Y_X/O2 (g DCW / g O2) ---
+// Biomass yield per gram of oxygen consumed under aerobic, substrate-limited conditions
+// at moderate growth rates. Values are condition-dependent: overflow metabolism (acetate
+// in E. coli / B. subtilis, ethanol in S. cerevisiae above the Crabtree threshold) reduces
+// Y_X/O2 at high growth rates.
+//
+// Sources:
+//   Heijnen & van Dijken (1992) Biotechnol. Bioeng. 39:833-858  https://doi.org/10.1002/bit.260390806
+//     -- multi-organism thermodynamic compilation; basis for E. coli and B. subtilis values.
+//   Dauner & Sauer (2001) Biotechnol. Bioeng. 76:132-143  https://doi.org/10.1002/bit.1153
+//     -- stoichiometric chemostat data for B. subtilis on glucose.
+//   Verduyn et al. (1991) Yeast 8:501-517  https://doi.org/10.1002/yea.320080703
+//     -- aerobic glucose-limited chemostat (D = 0.10 h^-1); authoritative S. cerevisiae value.
+//   Looser et al. (2015) Biotechnol. Adv. 33:517-533  https://doi.org/10.1016/j.biotechadv.2015.02.006
+//     -- P. pastoris bioprocess review; glycerol-phase OUR-to-biomass stoichiometry.
+//   Doran P.M. (2013) Bioprocess Engineering Principles, 2nd ed. Elsevier.
+export const OXYGEN_YIELD_COEFFICIENT: Record<OrganismSpecies, number> = {
+  // E. coli, glucose, aerobic, μ < 0.3 h^-1 (no acetate overflow).
+  // Shiloach & Fass (2005); BNID 105317. Range in lit: 0.9–1.1 g/g.
+  e_coli:         1.00,
+
+  // B. subtilis, glucose, aerobic minimal media. Dauner & Sauer (2001).
+  // Computed from Yx/s ≈ 0.40 g/g and Yo/s ≈ 4 mol/mol → ~0.55–1.0 g/g.
+  b_subtilis:     0.80,
+
+  // S. cerevisiae, glucose, fully respiratory (D < 0.30 h^-1, below Crabtree).
+  // Verduyn et al. (1991); confirmed by Pronk et al. (1994).
+  // Drops to ~0.10 g/g under respiro-fermentative conditions.
+  s_cerevisiae:   1.00,
+
+  // P. pastoris, glycerol phase, fed-batch. Looser et al. (2015); Cos et al. (2006).
+  // Note: methanol phase is MUCH more O2-demanding — use ~0.20 g/g if modelling
+  // the induction phase (methanol is more reduced AND alcohol oxidase is wasteful).
+  p_pastoris:     0.65,
+
+  // Conservative midpoints for unspecified strains. The aerobic Y_X/O2 envelope
+  // for heterotrophic growth on hexose-equivalent carbon is ~0.5–1.1 g/g.
+  other_bacteria: 0.80,
+  other_yeast:    0.85,
+};
+
 // --- ARCHIVED (no active callers) ---
 
 // export interface QO2Range {

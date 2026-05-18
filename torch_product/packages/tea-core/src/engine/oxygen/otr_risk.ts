@@ -15,6 +15,12 @@ function otrConfidence(our_mode: ProcessInputs["our_mode"]): { confidence: Confi
   if (our_mode === "measured") {
     return { confidence: "high_confidence", driver: "OUR user-provided." };
   }
+  if (our_mode === "estimate_mu") {
+    return {
+      confidence: "directional",
+      driver: "OUR estimated from µ and literature Y_X/O₂; provide measured OUR to upgrade to High-confidence.",
+    };
+  }
   return {
     confidence: "directional",
     driver: "OUR estimated from literature; provide measured OUR to upgrade to High-confidence.",

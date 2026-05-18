@@ -27,6 +27,9 @@ function heatConfidence(our_mode: ProcessInputs["our_mode"]): { confidence: Conf
   if (our_mode === "measured") {
     return { confidence: "reliable", driver: "OUR user-provided; heat model uses correlation-derived U, jacket area, and LMTD." };
   }
+  if (our_mode === "estimate_mu") {
+    return { confidence: "directional", driver: "OUR estimated from µ and literature Y_X/O₂; heat generation scales directly with OUR. Provide measured OUR to improve confidence." };
+  }
   return { confidence: "directional", driver: "OUR estimated from literature; heat generation scales directly with OUR. Provide measured OUR to improve confidence." };
 }
 
