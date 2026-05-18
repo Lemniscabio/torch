@@ -70,6 +70,12 @@ function mixingConfidence(ourMode: ProcessInputs["our_mode"]): { confidence: Con
       driver: "OUR user-provided; mixing risk uses correlation ensemble (Ruszkowski, Cooke, Grenville-Nienow) and O2 depletion margin.",
     };
   }
+  if (ourMode === "estimate_mu") {
+    return {
+      confidence: "directional",
+      driver: "OUR estimated from µ and literature Y_X/O₂; mixing risk inherits OUR uncertainty through O2 depletion time.",
+    };
+  }
   return {
     confidence: "directional",
     driver: "OUR estimated from literature; mixing risk inherits OUR uncertainty through O2 depletion time.",

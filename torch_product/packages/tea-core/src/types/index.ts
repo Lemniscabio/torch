@@ -19,8 +19,8 @@ export type ImpellerType = "rushton" | "pitched_blade" | "marine" | "unknown";
 export type ScaleupCriterion = "power_per_volume" | "kla" | "shear";
 
 // "exhaust_gas" retained for type-safety during transition; engine support
-// will be dropped in Stage 3. New UI only exposes "measured" | "estimate".
-export type OurMode = "measured" | "estimate" | "exhaust_gas";
+// will be dropped in Stage 3. New UI only exposes "measured" | "estimate" | "estimate_mu".
+export type OurMode = "measured" | "estimate" | "estimate_mu" | "exhaust_gas";
 
 export type RiskScore = "low" | "moderate" | "high" | "critical";
 
@@ -59,6 +59,7 @@ export interface ProcessInputs {
   biomass_cdw_g_l: number;              // Peak biomass (g/L CDW), > 0
   our_mode: OurMode;                // OUR input mode, default: estimate
   our_measured?: number;            // OUR measured value (mmol/L/h), required if our_mode == measured
+  specific_growth_rate?: number;    // Specific growth rate µ (h⁻¹), required if our_mode == estimate_mu
   o2_inlet?: number;                // Sparger inlet O2 mole fraction (%), default 20.9
   /** @deprecated */
   o2_outlet?: number;               // Exhaust gas outlet O2 (%)

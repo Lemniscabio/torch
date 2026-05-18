@@ -41,6 +41,13 @@ export function getOurPeakBounds(
   return OUR_PEAK_BOUNDS[organism];
 }
 
+// Empirical correction applied to OUR estimated via the µ/Y_X/O₂ method.
+// The stoichiometric formula assumes all growth-associated ATP comes from
+// oxidative phosphorylation; in practice, partial overflow metabolism and
+// maintenance energy reduce the observable OUR relative to the theoretical
+// prediction, yielding a factor < 1.
+export const OUR_ESTIMATE_MU_SCALE_FACTOR = 0.7;
+
 // Feed pulse interval mapped to seconds — used for τ_feed in mixing risk scoring.
 export const FEEDING_FREQUENCY_SECONDS: Record<FeedingFrequency, number> = {
   continuous:    10,

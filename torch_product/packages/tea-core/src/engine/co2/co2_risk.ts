@@ -46,6 +46,9 @@ function co2Confidence(our_mode: ProcessInputs["our_mode"]): { confidence: Confi
   if (our_mode === "measured") {
     return { confidence: "reliable",    driver: `${prefix} OUR user-provided; CO₂ model is a simplified mass-balance estimate.` };
   }
+  if (our_mode === "estimate_mu") {
+    return { confidence: "directional", driver: `${prefix} OUR estimated from µ and literature Y_X/O₂; provide measured OUR to improve confidence.` };
+  }
   return { confidence: "directional", driver: `${prefix} OUR estimated from literature; provide measured OUR to improve confidence.` };
 }
 

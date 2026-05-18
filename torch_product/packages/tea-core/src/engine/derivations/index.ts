@@ -33,10 +33,11 @@ export function runAllDerivations(inputs: ProcessInputs): DerivationOutput {
 
   // D1 — OUR
   const our = deriveOur(
-    inputs.our_mode as "measured" | "estimate",
+    inputs.our_mode as "measured" | "estimate" | "estimate_mu",
     inputs.our_measured,
     inputs.organism_species,
     inputs.biomass_cdw_g_l,
+    inputs.specific_growth_rate,
   );
 
   // D2 — Vessel geometry
