@@ -1,0 +1,28 @@
+# Local Postgres for backend dev. Mirrors Cloud SQL Postgres flavour + version.
+#
+# Usage:
+#   docker compose up -d     # start
+#   docker compose down      # stop (keeps volume)
+#   docker compose down -v   # stop + wipe data
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: torch-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: torch
+      POSTGRES_PASSWORD: torch
+      POSTGRES_DB: torch
+    ports:
+      - "5432:5432"
+    volumes:
+      - torch-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U torch -d torch"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  torch-postgres-data:

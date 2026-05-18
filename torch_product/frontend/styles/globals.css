@@ -1,0 +1,303 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────────────
+   Torch product design tokens — dark glass edition.
+   Black/near-black base, single flame-orange accent. No gradients.
+   Ink/paper semantics are intentionally inverted for dark: ink-900 is
+   the lightest (primary text), paper-50 is the darkest (page bg).
+   ────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* ── Ink (text, interactive chrome) — light on dark ── */
+  --color-ink-900: #F4F4F5;   /* primary text */
+  --color-ink-800: #E4E4E7;   /* secondary text */
+  --color-ink-700: #D4D4D8;   /* body */
+  --color-ink-500: #A1A1AA;   /* muted */
+  --color-ink-400: #71717A;   /* very muted */
+  --color-ink-300: #52525B;   /* subtle borders, disabled */
+  --color-ink-200: #3F3F46;   /* hairlines */
+  --color-ink-100: #27272A;   /* faintest tint */
+
+  /* ── Paper (surfaces) — dark layers ── */
+  --color-paper-50:  #09090B;  /* page background */
+  --color-paper-100: #0F0F13;  /* slightly raised */
+  --color-paper-200: #18181B;  /* inputs, inline surfaces */
+  --color-paper-300: #27272A;  /* cards, panels */
+
+  /* ── Hairlines — white at low opacity on dark ── */
+  --color-rule:        rgba(255,255,255,0.07);
+  --color-rule-strong: rgba(255,255,255,0.13);
+
+  /* ── Warning panel ── */
+  --color-warning-fg: #fbbf24;
+  --color-warning-body: rgba(255,255,255,0.78);
+  --color-warning-bg: rgba(251,191,36,0.06);
+  --color-warning-border: rgba(251,191,36,0.32);
+
+  /* ── The one accent: flame orange ── */
+  --color-flame-50:  #2A1000;
+  --color-flame-200: #8A3200;
+  --color-flame-500: #FF5A1F;
+  --color-flame-700: #FF7A45;
+  --color-flame-900: #FFA07A;
+
+  /* ── Type stacks (populated by next/font in layout.tsx) ── */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, monospace;
+
+  /* ── Shape — squircle-like radii for bordered UI surfaces ── */
+  --radius-squircle-sm: 12px;
+  --radius-squircle-md: 16px;
+  --radius-squircle-lg: 22px;
+  --radius-squircle-xl: 28px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Light theme overrides — applied when html[data-theme="light"]
+   ────────────────────────────────────────────────────────────────────── */
+html[data-theme="light"] {
+  --color-ink-900: #18181B;
+  --color-ink-800: #27272A;
+  --color-ink-700: #3F3F46;
+  --color-ink-500: #71717A;
+  --color-ink-400: #A1A1AA;
+  --color-ink-300: #D4D4D8;
+  --color-ink-200: #E4E4E7;
+  --color-ink-100: #F4F4F5;
+
+  --color-paper-50:  #FAFAFA;
+  --color-paper-100: #F4F4F5;
+  --color-paper-200: #E4E4E7;
+  --color-paper-300: #D4D4D8;
+
+  --color-rule:        rgba(0,0,0,0.08);
+  --color-rule-strong: rgba(0,0,0,0.14);
+
+  --color-warning-fg: #b45309;
+  --color-warning-body: #6B4E16;
+  --color-warning-bg: rgba(251,191,36,0.12);
+  --color-warning-border: rgba(217,119,6,0.34);
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Base
+   ────────────────────────────────────────────────────────────────────── */
+html {
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11", "cv02";
+  font-variant-numeric: tabular-nums lining-nums;
+  background: var(--color-paper-50);
+  color: var(--color-ink-900);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+}
+
+::selection {
+  background: var(--color-flame-500);
+  color: #fff;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-flame-500);
+  outline-offset: 2px;
+  border-radius: var(--radius-squircle-sm);
+}
+
+/* ── Squircle corners ──
+   Keep true circles/pills as-is (`rounded-full`), but make every bordered
+   card, field, and utility-rounded box use softer continuous corners. */
+.rounded-md { border-radius: var(--radius-squircle-sm) !important; }
+.rounded-lg { border-radius: var(--radius-squircle-md) !important; }
+.rounded-xl { border-radius: var(--radius-squircle-lg) !important; }
+.rounded-2xl { border-radius: var(--radius-squircle-xl) !important; }
+
+/* ── Type scale ── */
+.text-display {
+  font-size: clamp(1.75rem, 2.4vw, 2rem);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+}
+.text-section {
+  font-size: 1.375rem;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+  font-weight: 600;
+}
+.text-title {
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  font-weight: 600;
+}
+.text-body {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  font-weight: 400;
+}
+.text-meta {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  font-weight: 400;
+  color: var(--color-ink-500);
+}
+.text-label {
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--color-ink-400);
+}
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+/* ── Hairlines ── */
+.rule   { border-top: 1px solid var(--color-rule); }
+.rule-b { border-bottom: 1px solid var(--color-rule); }
+
+/* ── Form base — dark glass inputs ── */
+.field {
+  display: block;
+  width: 100%;
+  background: var(--color-paper-200);
+  color: var(--color-ink-900);
+  border: 1px solid var(--color-ink-200);
+  border-radius: var(--radius-squircle-md);
+  padding: 10px 12px;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.field:hover { border-color: var(--color-ink-300); }
+.field:focus {
+  outline: none;
+  border-color: var(--color-ink-500);
+  box-shadow: 0 0 0 1px var(--color-ink-300);
+}
+.field[aria-invalid="true"] {
+  border-color: var(--color-flame-500);
+  box-shadow: 0 0 0 1px rgba(255, 90, 31, 0.3);
+}
+
+/* Hide browser number steppers so numeric fields match the custom controls. */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* native select text colour in dark mode */
+.field option {
+  background: var(--color-paper-200);
+  color: var(--color-ink-900);
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-squircle-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  user-select: none;
+  cursor: pointer;
+  transition: background-color 100ms ease, border-color 100ms ease,
+              transform 60ms ease, opacity 100ms ease;
+  border: 1px solid transparent;
+}
+.btn:active:not(:disabled) { transform: scale(0.975); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Primary — bright on dark, acts as the strongest non-CTA button */
+.btn-primary {
+  background: var(--color-ink-900);
+  color: var(--color-paper-50);
+  border-color: var(--color-ink-900);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-ink-800);
+  border-color: var(--color-ink-800);
+}
+
+/* Ghost — glass border on dark surface */
+.btn-ghost {
+  background: transparent;
+  color: var(--color-ink-700);
+  border-color: var(--color-ink-200);
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--color-ink-300);
+  background: var(--color-paper-200);
+  color: var(--color-ink-900);
+}
+
+/* Flame — the orange CTA, used only for the terminal "Run" action */
+.btn-flame {
+  background: var(--color-flame-500);
+  color: #fff;
+  border-color: var(--color-flame-500);
+}
+.btn-flame:hover:not(:disabled) {
+  background: #e84e17;
+  border-color: #e84e17;
+}
+
+/* ── Glass surfaces — nav / bottom bar ── */
+.glass-surface {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(9, 9, 11, 0.85);
+}
+html[data-theme="light"] .glass-surface {
+  background: rgba(250, 250, 250, 0.88);
+}
+
+/* ── Glass card — login + modals ── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-squircle-lg);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+html[data-theme="light"] .glass-card {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* ── Theme-switch view transition — clip-path wipe, no default cross-fade ── */
+::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,70 @@
+import bcrypt from "bcryptjs";
+import { prisma } from "../config/db";
+import { signToken } from "../middlewares/auth.middleware";
+import { validateWorkEmail, extractDomain } from "../helpers/email-validation";
+
+const SALT_ROUNDS = 12;
+const MIN_PASSWORD_LENGTH = 8;
+
+function validatePassword(password: string) {
+  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+    throw { status: 400, message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` };
+  }
+}
+
+export async function signup(email: string, password: string) {
+  const check = validateWorkEmail(email);
+  if (!check.valid) {
+    throw { status: 400, message: check.error ?? "Invalid email." };
+  }
+  validatePassword(password);
+
+  const normalisedEmail = email.toLowerCase().trim();
+  const domain = extractDomain(normalisedEmail);
+
+  const existing = await prisma.user.findUnique({
+    where: { email: normalisedEmail },
+  });
+
+  if (existing) {
+    throw { status: 409, message: "An account with this email already exists. Please sign in." };
+  }
+
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+  const user = await prisma.user.create({
+    data: {
+      email: normalisedEmail,
+      password_hash: passwordHash,
+      company_domain: domain,
+    },
+  });
+
+  const token = signToken({ userId: user.id, email: user.email });
+
+  return { id: user.id, email: user.email, company_domain: user.company_domain, token };
+}
+
+export async function login(email: string, password: string) {
+  if (typeof email !== "string" || typeof password !== "string") {
+    throw { status: 400, message: "Email and password are required." };
+  }
+  const normalisedEmail = email.toLowerCase().trim();
+
+  const user = await prisma.user.findUnique({
+    where: { email: normalisedEmail },
+  });
+
+  if (!user) {
+    throw { status: 404, message: "No account found with this email. Please sign up." };
+  }
+
+  const valid = await bcrypt.compare(password, user.password_hash);
+  if (!valid) {
+    throw { status: 401, message: "Incorrect password." };
+  }
+
+  const token = signToken({ userId: user.id, email: user.email });
+
+  return { id: user.id, email: user.email, company_domain: user.company_domain, token };
+}

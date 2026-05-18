@@ -47,3 +47,5 @@ ignore/*
 backend/.agents/
 backend/prisma/migrations/
 backend/skills-lock.json
+
+.claude/    

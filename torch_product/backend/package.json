@@ -1,0 +1,40 @@
+{
+  "name": "torch-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Torch product backend — Express API. Cloud Run target.",
+  "main": "dist/app.js",
+  "scripts": {
+    "predev": "prisma generate",
+    "dev": "tsx watch src/app.ts",
+    "build": "prisma generate && tsc",
+    "start": "node dist/app.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.2",
+    "@torch/core": "file:../packages/tea-core",
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.10.0",
+    "prisma": "^7.4.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.7.0"
+  }
+}
