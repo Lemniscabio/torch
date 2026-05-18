@@ -106,11 +106,16 @@ const processShape = {
     .positive('Must be greater than 0.'),
 
   // Oxygen
-  our_mode: z.enum(['measured', 'estimate']),
+  our_mode: z.enum(['measured', 'estimate', 'estimate_mu']),
   our_measured: z
     .number()
     .positive('Must be greater than 0.')
     .max(PROCESS_INPUT_BOUNDS.our_measured.max, `OUR cannot exceed ${PROCESS_INPUT_BOUNDS.our_measured.max} mmol/L/h.`)
+    .optional(),
+  specific_growth_rate: z
+    .number()
+    .positive('Must be greater than 0.')
+    .max(3, 'µ above 3 h⁻¹ is outside supported range.')
     .optional(),
   o2_inlet: z
     .number()
@@ -152,10 +157,26 @@ export const scaleStepSchema = z.object(scaleShape).refine(
 
 export const vesselStepSchema = z.object(vesselShape);
 
-export const processStepSchema = z.object(processShape).refine(
-  (d) => d.our_mode !== 'measured' || typeof d.our_measured === 'number',
-  { message: 'Provide a measured OUR value.', path: ['our_measured'] },
-);
+const ESTIMATE_MU_SPECIES = new Set([
+  'e_coli', 'b_subtilis', 's_cerevisiae', 'p_pastoris',
+]);
+
+export const processStepSchema = z.object(processShape).superRefine((d, ctx) => {
+  if (d.our_mode === 'measured' && typeof d.our_measured !== 'number') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['our_measured'],
+      message: 'Provide a measured OUR value.',
+    });
+  }
+  if (d.our_mode === 'estimate_mu' && typeof d.specific_growth_rate !== 'number') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['specific_growth_rate'],
+      message: 'Provide a specific growth rate (µ).',
+    });
+  }
+});
 
 // ── Full schema — for the final submit ────────────────────────────────────
 
@@ -180,6 +201,22 @@ export const fullAssessSchema = z
         path: ['our_measured'],
         message: 'Provide a measured OUR value.',
       });
+    }
+    if (d.our_mode === 'estimate_mu') {
+      if (typeof d.specific_growth_rate !== 'number') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['specific_growth_rate'],
+          message: 'Provide a specific growth rate (µ).',
+        });
+      }
+      if (!ESTIMATE_MU_SPECIES.has(d.organism_species)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['our_mode'],
+          message: 'µ-based estimate is only available for E. coli, B. subtilis, S. cerevisiae, and P. pastoris.',
+        });
+      }
     }
     if (d.process_type === 'fed_batch' && typeof d.feeding_frequency !== 'string') {
       ctx.addIssue({
@@ -233,7 +270,7 @@ export const STEP_FIELDS: Record<StepSlug, (keyof AssessFormValues)[]> = {
   ],
   process: [
     'biomass_input_mode', 'biomass_cdw_g_l',
-    'our_mode', 'our_measured',
+    'our_mode', 'our_measured', 'specific_growth_rate',
     'o2_inlet', 'do_setpoint',
     'temperature', 't_cw_inlet',
   ],

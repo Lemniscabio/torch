@@ -78,6 +78,8 @@ export function toProcessInputs(form: AssessFormValues): ProcessInputs {
     biomass_cdw_g_l: biomassCdw,
     our_mode: form.our_mode,
     our_measured: form.our_mode === 'measured' ? num(form.our_measured, 0) : undefined,
+    specific_growth_rate:
+      form.our_mode === 'estimate_mu' ? num(form.specific_growth_rate, 0) : undefined,
     o2_inlet: num(form.o2_inlet, INPUT_DEFAULTS.o2_inlet),
     do_setpoint: num(form.do_setpoint, INPUT_DEFAULTS.do_setpoint),
 

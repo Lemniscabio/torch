@@ -225,6 +225,7 @@
     <li><a href="#step9">Step 9 — Making the service publicly invokable</a></li>
     <li><a href="#wiring">Wiring the frontend to the backend</a></li>
     <li><a href="#living">Living with the deploy — questions that come up after</a></li>
+    <li><a href="#redeploy">Redeploying after code changes (the everyday flow)</a></li>
     <li><a href="#left">What’s still left</a></li>
     <li><a href="#bills">A note on cost</a></li>
   </ol>
@@ -595,6 +596,135 @@ gcloud sql instances patch torch-db --activation-policy=ALWAYS  # start</code></
 <div class="callout warn">
 <strong>CORS only matches the exact string</strong>
 <p><code>cors({ origin })</code> accepts a string or an array — and does an exact match. So <code>https://torch-snowy.vercel.app</code> passes, but Vercel preview URLs like <code>https://torch-snowy-git-feature-xyz.vercel.app</code> get blocked. Not an issue today, but if we want preview deployments to talk to the backend later, swap <code>origin</code> for a regex-based function that allows the production URL, all preview subdomains, and localhost. Trivial to add when needed.</p>
+</div>
+
+<h2 id="redeploy">Redeploying after code changes (the everyday flow)</h2>
+
+<p>The initial deploy is one-time. The flow you’ll repeat dozens of times is: pull a code change, decide whether anything needs to be rebuilt, redeploy. This section is the cookbook.</p>
+
+<h3>1. The frontend vs. backend split</h3>
+
+<p>Frontend changes never touch GCP. Vercel and Cloud Run are independent — push to your frontend branch, Vercel rebuilds, done. The only time order matters is when a frontend change depends on a <em>new</em> backend endpoint that hasn’t been deployed yet: in that case, deploy the backend first, then merge the frontend.</p>
+
+<h3>2. Pulling and merging a remote branch into <code>main</code></h3>
+
+<p>Common starting state: someone pushed a branch on the remote (say, <code>new_our_method</code>) that you want to integrate. You may also have uncommitted local work. Don’t panic — the safe sequence is:</p>
+
+<h4>Handle local untracked / modified files first</h4>
+
+<p><strong>Untracked files</strong> (new files git isn’t watching) don’t block a merge unless the incoming branch tries to create the same path. Still, before merging, you want a clean working tree so you’re not mixing your changes with someone else’s. Three options:</p>
+
+<ul>
+  <li><strong>Commit them</strong> if they belong in the repo (configs, source, docs).</li>
+  <li><strong>Add them to <code>.gitignore</code></strong> if they’re local-only artifacts (binaries, build output, the <code>cloud-sql-proxy</code> binary, etc.).</li>
+  <li><strong>Stash</strong> if they’re half-done work: <code>git stash push -u -m "wip"</code>. Restore later with <code>git stash pop</code>.</li>
+</ul>
+
+<p>For modified-but-not-committed files, same options — <code>git stash</code> is the lightest. Verify with:</p>
+
+<pre><code>git status</code></pre>
+
+<p>You want it to say either “nothing to commit, working tree clean” or “only untracked files that don’t collide with the merge.”</p>
+
+<h4>Fetch and merge</h4>
+
+<pre><code>git fetch origin
+git branch -a | grep new_our_method      # confirm origin/new_our_method exists locally
+git checkout main
+git pull origin main                     # make sure local main is current
+git merge origin/new_our_method</code></pre>
+
+<p>If git auto-merges, you’re done — push:</p>
+
+<pre><code>git push origin main</code></pre>
+
+<p>If git reports conflicts, it lists the conflicting files. Open each, resolve the <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code> markers, then:</p>
+
+<pre><code>git add &lt;resolved-files&gt;
+git commit
+git push origin main</code></pre>
+
+<h3>3. Decide whether you need to rebuild the Docker image</h3>
+
+<p>Rebuilding is the only expensive step (a few minutes) and the only one that pushes a new image to Artifact Registry. You only need to do it when the things that go <em>into</em> the image have changed:</p>
+
+<ul>
+  <li>Anything in <code>backend/src/**</code> — your Express code.</li>
+  <li><code>backend/package.json</code> or <code>package-lock.json</code> — new or updated dependencies.</li>
+  <li>The Dockerfile itself.</li>
+  <li><code>backend/prisma/schema.prisma</code> — Prisma generates new client code at build time.</li>
+  <li>Anything under <code>packages/tea-core/**</code> — the backend imports it as <code>@torch/core</code> via a <code>file:</code> dependency, so it’s baked into the image.</li>
+</ul>
+
+<p>Quick way to inspect what just changed:</p>
+
+<pre><code>git diff HEAD~1 HEAD -- torch_product/backend torch_product/packages/tea-core</code></pre>
+
+<p>Empty output → no rebuild needed. Anything in there → rebuild. Pure frontend or doc changes never trigger a backend rebuild.</p>
+
+<h3>4. Rebuild and redeploy</h3>
+
+<p>From <code>torch_product/</code>, bump the image tag (so you can roll back) and run the same two commands as the initial deploy:</p>
+
+<pre><code>cd /Users/kartikey/Desktop/torch/torch_product
+
+export PROJECT_ID=project-688a4c78-5d5b-45b3-b5d
+export REGION=us-central1
+export INSTANCE_CONN=project-688a4c78-5d5b-45b3-b5d:us-central1:torch-db
+export IMAGE=us-central1-docker.pkg.dev/${PROJECT_ID}/torch/backend:v2   # bump v1 → v2 → v3 ...
+
+# Build + push to Artifact Registry
+gcloud builds submit --config=cloudbuild.yaml --substitutions=_IMAGE=$IMAGE .
+
+# Deploy the new image to Cloud Run
+bash backend/deploy.sh</code></pre>
+
+<p>Cloud Run creates a <em>new revision</em> (e.g. <code>torch-backend-00003-tvt</code>) and shifts 100 % of traffic to it once it’s healthy. The old revision sticks around so you can roll back instantly.</p>
+
+<h4>Confirm it’s live</h4>
+
+<pre><code>curl https://torch-backend-746208330214.us-central1.run.app/api/health</code></pre>
+
+<p>Should return <code>{"status":"ok","timestamp":"..."}</code> with a fresh timestamp.</p>
+
+<h4>Roll back if something’s broken</h4>
+
+<p>List revisions:</p>
+
+<pre><code>gcloud run revisions list --service=torch-backend --region=us-central1</code></pre>
+
+<p>Send all traffic back to the previous one:</p>
+
+<pre><code>gcloud run services update-traffic torch-backend --region=us-central1 \
+  --to-revisions=&lt;previous-revision-name&gt;=100</code></pre>
+
+<p>No image rebuild, no downtime — Cloud Run just re-routes.</p>
+
+<h3>5. Did the Prisma schema change? Run migrations.</h3>
+
+<p>If the merge touched <code>backend/prisma/schema.prisma</code> and added a new migration file under <code>backend/prisma/migrations/</code>, you have to apply that migration to Cloud SQL <em>before</em> the new code starts running — otherwise the new code looks for columns or tables that don’t exist and crashes.</p>
+
+<p>Same flow as the original migration step: start the proxy, set a localhost-pointed <code>DATABASE_URL</code>, run <code>prisma migrate deploy</code>.</p>
+
+<pre><code># Terminal 1
+cd /Users/kartikey/Desktop/torch/torch_product
+./cloud-sql-proxy project-688a4c78-5d5b-45b3-b5d:us-central1:torch-db
+
+# Terminal 2
+cd /Users/kartikey/Desktop/torch/torch_product/backend
+export DB_PASSWORD='&lt;the-real-password&gt;'
+export DATABASE_URL="postgresql://torch:${DB_PASSWORD}@127.0.0.1:5432/torch?schema=public"
+npx prisma migrate deploy</code></pre>
+
+<p>Run migrations <strong>before</strong> deploying the new image when the schema change is breaking (renaming columns, removing tables). For additive changes (new nullable column, new table), order is more forgiving but the same sequence is still the safe habit.</p>
+
+<h3>6. Frontend-only changes — no GCP work at all</h3>
+
+<p>Push to the frontend repo / branch that Vercel watches; Vercel auto-rebuilds. The backend keeps running unchanged. The only thing that ties them is the <code>NEXT_PUBLIC_API_URL</code> env var on Vercel pointing at the Cloud Run URL — which doesn’t move unless we change Cloud Run’s service name or map a custom domain.</p>
+
+<div class="callout">
+<strong>The mental shortcut</strong>
+<p><code>backend/src/**</code>, <code>backend/package.json</code>, the Dockerfile, the Prisma schema, or <code>packages/tea-core/**</code> changed → rebuild image + redeploy. Schema migration added → run <code>prisma migrate deploy</code> against Cloud SQL too. Everything else → no GCP work.</p>
 </div>
 
 <h2 id="left">What’s still left</h2>

@@ -128,11 +128,11 @@ export function ScaleStep() {
       <Field
         label="Scale-up criterion"
         htmlFor="scaleup_criterion"
-        hint="How agitation/power is preserved across scales."
+        hint="How agitation and aeration is preserved across scales."
         error={errors.scaleup_criterion?.message}
       >
         <Select id="scaleup_criterion" {...register('scaleup_criterion')}>
-          <option value="power_per_volume">Constant P/V (most common)</option>
+          <option value="power_per_volume">Constant P/V</option>
           <option value="kla">Constant kLa</option>
           <option value="shear">Constant tip speed</option>
         </Select>

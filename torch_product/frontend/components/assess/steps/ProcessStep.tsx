@@ -82,7 +82,7 @@ export function ProcessStep() {
         hint="A measured OUR upgrades confidence across every domain."
         error={errors.our_mode?.message}
       >
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-3">
           <OurCard
             title="I have measured OUR"
             description="Highest confidence — upgrades all domains."
@@ -94,8 +94,18 @@ export function ProcessStep() {
             })}
           />
           <OurCard
+            title="Estimate from specific growth rate (µ)"
+            description="Directional confidence for four domains."
+            selected={ourMode === 'estimate_mu'}
+            onSelect={() => setValue('our_mode', 'estimate_mu', {
+              shouldDirty: true,
+              shouldTouch: true,
+              shouldValidate: true,
+            })}
+          />
+          <OurCard
             title="Estimate from physiology"
-            description="Directional confidence for the OTR domain."
+            description="Directional confidence for four domains."
             selected={ourMode === 'estimate'}
             onSelect={() => setValue('our_mode', 'estimate', {
               shouldDirty: true,
@@ -117,6 +127,25 @@ export function ProcessStep() {
             unit="mmol/L/h"
             invalid={!!errors.our_measured}
             {...register('our_measured', {
+              setValueAs: (v) =>
+                v === '' || Number.isNaN(Number(v)) ? undefined : Number(v),
+            })}
+          />
+        </Field>
+      ) : null}
+
+      {ourMode === 'estimate_mu' ? (
+        <Field
+          label="Specific growth rate (µ)"
+          htmlFor="specific_growth_rate"
+          hint="Available for E. coli, B. subtilis, S. cerevisiae, P. pastoris."
+          error={errors.specific_growth_rate?.message}
+        >
+          <NumberInput
+            id="specific_growth_rate"
+            unit="/h"
+            invalid={!!errors.specific_growth_rate}
+            {...register('specific_growth_rate', {
               setValueAs: (v) =>
                 v === '' || Number.isNaN(Number(v)) ? undefined : Number(v),
             })}

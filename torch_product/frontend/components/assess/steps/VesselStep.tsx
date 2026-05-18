@@ -18,7 +18,7 @@ function maxImpellersForGeometry(hd: number): number {
   return Math.max(1, Math.min(4, Math.floor(hd / 0.8)));
 }
 
-const HD_PRESETS = [1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 3.5] as const;
+const HD_PRESETS = [1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0] as const;
 const DT_PRESETS = [0.2, 0.33, 0.4, 0.5] as const;
 const IMPELLER_COUNTS = [1, 2, 3, 4] as const;
 

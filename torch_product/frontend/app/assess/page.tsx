@@ -44,12 +44,12 @@ const STEP_META: Record<StepSlug, { title: string; description?: string }> = {
     description: 'Lab and target working volumes.',
   },
   vessel: {
-    title: 'Your lab-scale setup.',
-    description: 'Lab vessel, impeller, and agitation.',
+    title: 'Reactor design.',
+    description: 'Vessel, impellers, agitation, and aeration.',
   },
   process: {
     title: 'Process characterisation.',
-    description: 'Biomass, oxygen, and thermal conditions.',
+    description: 'Biomass, oxygen, and heat transfer.',
   },
 };
 
