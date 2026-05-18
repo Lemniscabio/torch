@@ -1,0 +1,24 @@
+.git
+.gitignore
+.gcloudignore
+
+# Frontend — not needed for backend build
+frontend/
+
+# Node artifacts (will be reinstalled in container)
+**/node_modules/
+**/dist/
+**/.next/
+**/build/
+
+# Local env / IDE / OS
+**/.env
+**/.env.local
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
+**/npm-debug.log*
+**/yarn-debug.log*

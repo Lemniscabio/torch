@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Deploying the Torch backend to Google Cloud Run — a walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #242424;
+    --ink-soft: #6b6b6b;
+    --rule: #e6e6e6;
+    --paper: #ffffff;
+    --accent: #1a8917;
+    --code-bg: #f7f7f5;
+    --callout-bg: #fafaf8;
+    --callout-border: #d6d4cf;
+    --warn-bg: #fff4e5;
+    --warn-border: #f0c674;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 20px;
+    line-height: 1.65;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 64px 24px 120px; }
+  header.h { margin-bottom: 56px; }
+  .eyebrow {
+    font-family: Inter, -apple-system, sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-family: Inter, sans-serif;
+    font-weight: 700;
+    font-size: 46px;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    margin: 0 0 16px;
+    color: var(--ink);
+  }
+  .deck {
+    font-family: "Source Serif 4", Georgia, serif;
+    font-size: 22px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin: 0 0 32px;
+  }
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: Inter, sans-serif;
+    font-size: 14px;
+    color: var(--ink-soft);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 0;
+  }
+  .meta .dot { width: 4px; height: 4px; background: var(--ink-soft); border-radius: 50%; }
+  h2 {
+    font-family: Inter, sans-serif;
+    font-weight: 700;
+    font-size: 30px;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    margin: 56px 0 16px;
+    color: var(--ink);
+  }
+  h3 {
+    font-family: Inter, sans-serif;
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 1.3;
+    margin: 36px 0 12px;
+    color: var(--ink);
+  }
+  h4 {
+    font-family: Inter, sans-serif;
+    font-weight: 600;
+    font-size: 17px;
+    margin: 24px 0 8px;
+    color: var(--ink);
+    letter-spacing: 0.005em;
+  }
+  p { margin: 0 0 22px; }
+  a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { text-decoration-thickness: 2px; }
+  strong { font-weight: 600; color: var(--ink); }
+  em { font-style: italic; }
+  ul, ol { padding-left: 24px; margin: 0 0 22px; }
+  li { margin-bottom: 8px; }
+  code {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.82em;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #c7254e;
+  }
+  pre {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0 0 24px;
+  }
+  pre code { background: none; padding: 0; color: var(--ink); font-size: inherit; }
+  blockquote {
+    border-left: 3px solid var(--ink);
+    padding: 4px 0 4px 22px;
+    margin: 0 0 26px;
+    font-style: italic;
+    color: var(--ink);
+    font-size: 22px;
+    line-height: 1.5;
+  }
+  .callout {
+    background: var(--callout-bg);
+    border: 1px solid var(--callout-border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 0 0 26px;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+  .callout p:last-child { margin: 0; }
+  .callout.warn { background: var(--warn-bg); border-color: var(--warn-border); }
+  .callout strong { display: block; margin-bottom: 6px; font-family: Inter, sans-serif; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 26px;
+    font-family: Inter, sans-serif;
+    font-size: 15px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th { font-weight: 600; color: var(--ink); background: var(--code-bg); }
+  td code { font-size: 13px; }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 48px 0; }
+  .toc {
+    background: var(--callout-bg);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 18px 24px;
+    margin: 0 0 48px;
+    font-family: Inter, sans-serif;
+    font-size: 15px;
+  }
+  .toc strong { display: block; margin-bottom: 10px; text-transform: uppercase; font-size: 12px; letter-spacing: 0.08em; color: var(--ink-soft); font-weight: 600; }
+  .toc ol { margin: 0; padding-left: 18px; }
+  .toc li { margin-bottom: 4px; }
+  .toc a { color: var(--ink); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .footnote { font-size: 14px; color: var(--ink-soft); font-style: italic; }
+  .archdiagram {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 20px;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 0 0 26px;
+  }
+  @media (max-width: 600px) {
+    body { font-size: 18px; }
+    h1 { font-size: 34px; }
+    h2 { font-size: 24px; }
+    h3 { font-size: 19px; }
+    .deck { font-size: 19px; }
+    .wrap { padding: 40px 18px 80px; }
+    blockquote { font-size: 19px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="h">
+  <div class="eyebrow">Engineering · Deployment</div>
+  <h1>Deploying the Torch backend to Google Cloud Run</h1>
+  <p class="deck">A walkthrough of every command we ran, every decision we made, and the reasoning behind each. Written so a future-me (or future-you) can repeat it without re-reading half of Google’s docs.</p>
+  <div class="meta">
+    <span>Torch product</span><span class="dot"></span>
+    <span>May 2026</span><span class="dot"></span>
+    <span>~12 min read</span>
+  </div>
+</header>
+
+<div class="toc">
+  <strong>What’s inside</strong>
+  <ol>
+    <li><a href="#arch">The architecture, on one page</a></li>
+    <li><a href="#why-cr">Why Cloud Run (and not a VM, App Engine, or Kubernetes)</a></li>
+    <li><a href="#step1">Step 1 — Project, auth, region</a></li>
+    <li><a href="#step2">Step 2 — Enabling the APIs we need</a></li>
+    <li><a href="#step3">Step 3 — Cloud SQL: a managed Postgres instance</a></li>
+    <li><a href="#step4">Step 4 — Secret Manager and the IAM detour</a></li>
+    <li><a href="#step5">Step 5 — Artifact Registry: where the image lives</a></li>
+    <li><a href="#step6">Step 6 — Building the image with Cloud Build</a></li>
+    <li><a href="#step7">Step 7 — Running Prisma migrations against Cloud SQL</a></li>
+    <li><a href="#step8">Step 8 — Deploying to Cloud Run</a></li>
+    <li><a href="#step9">Step 9 — Making the service publicly invokable</a></li>
+    <li><a href="#wiring">Wiring the frontend to the backend</a></li>
+    <li><a href="#living">Living with the deploy — questions that come up after</a></li>
+    <li><a href="#left">What’s still left</a></li>
+    <li><a href="#bills">A note on cost</a></li>
+  </ol>
+</div>
+
+<h2 id="arch">The architecture, on one page</h2>
+
+<p>Before any commands, here’s the picture we were aiming at. The frontend was already live on Vercel; the backend was a Node/Express + Prisma + Postgres app that needed a home. The full intended architecture looks like this:</p>
+
+<div class="archdiagram">Frontend (Vercel)            ─ Next.js, public web app
+        │
+        │  HTTPS, JWT in Authorization header
+        ▼
+Backend (Cloud Run)          ─ Express + Prisma
+        │
+        ├─→ Cloud SQL          ─ managed Postgres (private socket)
+        ├─→ Secret Manager     ─ DATABASE_URL, JWT_SECRET (read at boot)
+        └─→ Cloud Logging      ─ stdout/stderr captured automatically
+
+Artifact Registry            ─ holds the Docker image
+Cloud Build                  ─ builds image from source, one-shot
+
+Deferred for later:
+  Cloud Run Worker  ─ PDF generation
+  Cloud Tasks       ─ queue for the worker
+  Cloud Storage     ─ stores generated PDFs
+  Firebase Auth     ─ to replace the current bcrypt+JWT setup</div>
+
+<p>This piece covers everything in the first block. The deferred items (PDF generation, queue, storage, Firebase auth swap) are left for another writeup.</p>
+
+<h2 id="why-cr">Why Cloud Run</h2>
+
+<p>The first decision was where the backend should run. A few options were on the table:</p>
+
+<table>
+  <thead><tr><th>Option</th><th>Why we passed</th></tr></thead>
+  <tbody>
+    <tr><td>GCE VM</td><td>Pay for an idle box 24/7. Manual OS patching, manual scaling. No upside for a low-traffic API.</td></tr>
+    <tr><td>App Engine</td><td>Older, opinionated, slower to ship a custom Docker image. Cloud Run is essentially its modern replacement.</td></tr>
+    <tr><td>GKE (Kubernetes)</td><td>Massive overkill for one service. Would need to learn ops we don’t need yet.</td></tr>
+    <tr><td><strong>Cloud Run</strong></td><td>Container in, URL out. Scales to zero, HTTPS for free, autoscaling, pay-per-request. Perfect for an API with bursty/low traffic.</td></tr>
+  </tbody>
+</table>
+
+<p>The trade-off you accept with Cloud Run is a <em>cold start</em>: if no traffic has hit the service for a few minutes, the next request waits ~1–2 seconds while a container spins up. For a B2B tool with small user counts, that’s acceptable. If it becomes a problem later, we set <code>--min-instances=1</code> and the cold start disappears (at the cost of ~$5–10/mo for an always-warm idle container).</p>
+
+<h2 id="step1">Step 1 — Project, auth, region</h2>
+
+<p>We started by pointing <code>gcloud</code> at the right project and region. The project ID was an auto-generated one (<code>project-688a4c78-5d5b-45b3-b5d</code>) inside the lemnisca.bio org, with billing already enabled.</p>
+
+<pre><code>gcloud auth login
+gcloud config set project project-688a4c78-5d5b-45b3-b5d
+gcloud config set run/region us-central1
+gcloud config set compute/region us-central1</code></pre>
+
+<p>Region choice: <code>us-central1</code> because it’s the cheapest and oldest GCP region, has every service available, and there’s no latency-sensitive workload that demands somewhere closer. If our users were primarily in India, we’d use <code>asia-south1</code>. They’re not, so we don’t.</p>
+
+<h2 id="step2">Step 2 — Enabling the APIs</h2>
+
+<p>GCP services are off by default until you turn them on per-project. We need six of them:</p>
+
+<pre><code>gcloud services enable \
+  run.googleapis.com \
+  sqladmin.googleapis.com \
+  artifactregistry.googleapis.com \
+  secretmanager.googleapis.com \
+  cloudbuild.googleapis.com \
+  compute.googleapis.com</code></pre>
+
+<table>
+  <thead><tr><th>API</th><th>Why we need it</th></tr></thead>
+  <tbody>
+    <tr><td><code>run</code></td><td>Cloud Run itself</td></tr>
+    <tr><td><code>sqladmin</code></td><td>Cloud SQL — managed Postgres</td></tr>
+    <tr><td><code>artifactregistry</code></td><td>Stores the Docker image</td></tr>
+    <tr><td><code>secretmanager</code></td><td>Stores DB URL + JWT secret</td></tr>
+    <tr><td><code>cloudbuild</code></td><td>Builds the image from source</td></tr>
+    <tr><td><code>compute</code></td><td>Provides the default service account Cloud Run runs as</td></tr>
+  </tbody>
+</table>
+
+<h2 id="step3">Step 3 — Cloud SQL: managed Postgres</h2>
+
+<p>Cloud Run is stateless. Containers come and go on every deploy and every scale event, so the database can’t live inside them. We provisioned the smallest possible Postgres 16 instance:</p>
+
+<pre><code>gcloud sql instances create torch-db \
+  --database-version=POSTGRES_16 \
+  --edition=ENTERPRISE \
+  --tier=db-f1-micro \
+  --region=us-central1 \
+  --storage-size=10GB \
+  --storage-type=SSD \
+  --storage-auto-increase \
+  --backup \
+  --backup-start-time=03:00</code></pre>
+
+<p>Notes on each flag:</p>
+
+<ul>
+  <li><strong><code>db-f1-micro</code></strong> — shared-core, ~$8/mo. Fine for dev and early users; trivially upgraded later.</li>
+  <li><strong><code>--storage-auto-increase</code></strong> — saves you from ever having to manually resize when the DB fills up.</li>
+  <li><strong><code>--backup --backup-start-time=03:00</code></strong> — daily automated backups at 3am, retained seven days by default. Free.</li>
+</ul>
+
+<p>After the instance was up we created the database and a Postgres user:</p>
+
+<pre><code>gcloud sql databases create torch --instance=torch-db
+gcloud sql users create torch --instance=torch-db --password=&lt;strong-password&gt;</code></pre>
+
+<div class="callout">
+<strong>Two layers of credentials</strong>
+<p>This step creates a <em>Postgres-level</em> user and password. That’s separate from the <em>GCP-level</em> IAM that controls whether something is even <em>allowed</em> to reach the SQL instance. Cloud Run needs both: a working SQL login, plus IAM (<code>roles/cloudsql.client</code>, which the default Compute service account already has via <code>roles/editor</code>) to open the connection.</p>
+</div>
+
+<h2 id="step4">Step 4 — Secret Manager and the IAM detour</h2>
+
+<p>The two values our backend needs at runtime — the database URL (with the Postgres password embedded) and the JWT signing secret — are sensitive. We don’t want them in source control or in the Cloud Run service’s plain env vars, where anyone with read access to the service config could see them. Secret Manager is GCP’s answer: an encrypted store, accessed via IAM, that Cloud Run can mount as env vars at container boot.</p>
+
+<p>Two secrets created:</p>
+
+<pre><code># DATABASE_URL uses the Cloud SQL Unix-socket form, because Cloud Run
+# attaches the SQL instance as a socket at /cloudsql/&lt;CONN&gt; rather than
+# a TCP host.
+DATABASE_URL="postgresql://torch:${PASSWORD}@localhost/torch?host=/cloudsql/${INSTANCE_CONN}&schema=public"
+
+printf '%s' "$DATABASE_URL" | gcloud secrets create torch-database-url --data-file=-
+printf '%s' "$JWT_SECRET"   | gcloud secrets create torch-jwt-secret   --data-file=-</code></pre>
+
+<div class="callout warn">
+<strong>A real footgun we hit</strong>
+<p>When pasting multi-line shell commands into zsh, the terminal can insert literal newlines inside quoted variables. We accidentally stored a <code>DATABASE_URL</code> with a <code>\n</code> in the middle, which would have failed silently in production. Always pipe a single-line <code>printf '%s'</code> and verify with <code>echo "$DATABASE_URL" | cat -A</code> — only one <code>$</code> at the end means clean.</p>
+</div>
+
+<h3>The IAM detour</h3>
+
+<p>Two principals need access to these secrets:</p>
+
+<ol>
+  <li><strong>You (the human)</strong> — to <em>grant</em> access. Needs <code>roles/secretmanager.admin</code>.</li>
+  <li><strong>The Cloud Run service account</strong> — to <em>read</em> the values at boot. Needs <code>roles/secretmanager.secretAccessor</code>.</li>
+</ol>
+
+<p>Cloud Run runs as the default Compute service account: <code>&lt;PROJECT_NUMBER&gt;-compute@developer.gserviceaccount.com</code>. That account already has broad <code>Editor</code> on the project, which lets it <em>create</em> secrets but not <em>access</em> their values — Google deliberately split those permissions so a blanket Editor role can’t hand out secret reads. So we add <code>secretAccessor</code> explicitly.</p>
+
+<p>The deployer (us) hit a permission wall here: <code>Editor</code> doesn’t include <code>secretmanager.secrets.setIamPolicy</code> either. Project owner had to grant <code>Secret Manager Admin</code> first. The two roles sound near-identical:</p>
+
+<table>
+  <thead><tr><th>Role</th><th>Can</th></tr></thead>
+  <tbody>
+    <tr><td><code>Secret Manager Admin</code></td><td>Manage secrets <em>and grant access</em></td></tr>
+    <tr><td><code>Secret Manager Secret Accessor</code></td><td>Read a secret’s value only</td></tr>
+  </tbody>
+</table>
+
+<p>Once Admin landed, we bound the Compute SA to the Accessor role on each secret via the Secret Manager UI. Two clicks per secret.</p>
+
+<h2 id="step5">Step 5 — Artifact Registry</h2>
+
+<p>Cloud Run needs to pull a Docker image from <em>somewhere</em>. Artifact Registry is GCP’s in-project image registry — private, fast pulls, no auth wiring required because Cloud Run is already in the same project. Cheaper and simpler than Docker Hub or GitHub Container Registry for this purpose.</p>
+
+<pre><code>gcloud artifacts repositories create torch \
+  --repository-format=docker \
+  --location=us-central1 \
+  --description="Torch backend container images"</code></pre>
+
+<p>One repo per service is the typical convention; ours just holds <code>backend</code> for now and will hold <code>backend-pdf-worker</code> later.</p>
+
+<h2 id="step6">Step 6 — Building the image with Cloud Build</h2>
+
+<p>The backend has an existing Dockerfile at <code>backend/Dockerfile</code>, but it requires the build context to be <code>torch_product/</code> (the parent directory), because the backend declares a file-system dependency on a sibling workspace package: <code>"@torch/core": "file:../packages/tea-core"</code>. The Docker context has to include both directories.</p>
+
+<p><code>gcloud builds submit --tag</code> assumes a <code>Dockerfile</code> at the root of the context, which we don’t have. So a thin <code>cloudbuild.yaml</code> at <code>torch_product/cloudbuild.yaml</code> just tells Cloud Build the right paths:</p>
+
+<pre><code>steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'backend/Dockerfile', '-t', '${_IMAGE}', '.']
+images:
+  - '${_IMAGE}'
+options:
+  logging: CLOUD_LOGGING_ONLY</code></pre>
+
+<p>Then:</p>
+
+<pre><code>export IMAGE=us-central1-docker.pkg.dev/${PROJECT_ID}/torch/backend:v1
+gcloud builds submit --config=cloudbuild.yaml --substitutions=_IMAGE=$IMAGE .</code></pre>
+
+<h3>Cloud Build vs GitHub Actions — and why we picked Cloud Build</h3>
+
+<p>Both can build and push images. The deciding factor for a first deploy is wiring overhead. Cloud Build runs <em>inside</em> the GCP project and is already authenticated against Artifact Registry; <code>gcloud builds submit</code> works zero-config. GitHub Actions would have meant creating a service account, generating a JSON key, storing it as a GitHub secret, and writing a workflow file — fine for ongoing CI, overkill for the first push. We can wire Actions later if and when we want push-to-deploy.</p>
+
+<div class="callout warn">
+<strong>Upload bloat</strong>
+<p>The first build uploaded 974 MB of tarball because gcloud zipped <em>everything</em> in <code>torch_product/</code>, including <code>node_modules</code>, <code>dist</code>, and the entire frontend. The image itself was only 181 MB. We added a <code>.gcloudignore</code> at <code>torch_product/.gcloudignore</code> so future uploads only ship the relevant source — same idea as <code>.gitignore</code>, but for <code>gcloud</code>.</p>
+</div>
+
+<h2 id="step7">Step 7 — Running Prisma migrations against Cloud SQL</h2>
+
+<p>The newly-created Cloud SQL database is empty. Prisma needs to apply the migrations in <code>backend/prisma/migrations/</code> to create the tables. But: the database isn’t reachable on the public internet, and we don’t want it to be.</p>
+
+<p>The standard pattern is to use the <strong>Cloud SQL Auth Proxy</strong> — a small Go binary that opens a local TCP port on <code>127.0.0.1:5432</code>, authenticates to Cloud SQL using your <code>gcloud</code> credentials, and forwards traffic over a TLS tunnel to the instance. From the app’s point of view it’s just plain Postgres on localhost.</p>
+
+<pre><code># Terminal 1: start the proxy
+./cloud-sql-proxy project-688a4c78-5d5b-45b3-b5d:us-central1:torch-db
+
+# Terminal 2: run the migration using a localhost DATABASE_URL
+export DATABASE_URL="postgresql://torch:${PASSWORD}@127.0.0.1:5432/torch?schema=public"
+npx prisma migrate deploy</code></pre>
+
+<div class="callout">
+<strong>Two different DATABASE_URLs</strong>
+<p>One for the proxy (TCP on localhost: <code>...@127.0.0.1:5432/torch</code>), one for Cloud Run (Unix socket: <code>...@localhost/torch?host=/cloudsql/&lt;CONN&gt;</code>). Same database, different paths in. Easy to mix up. The Unix socket form is the one stored in Secret Manager.</p>
+</div>
+
+<p>The proxy also needed <code>gcloud auth application-default login</code> — a different credential than <code>gcloud auth login</code>. ADC is the standard mechanism GCP client libraries use to authenticate; once set up, every tool on the machine inherits it.</p>
+
+<h2 id="step8">Step 8 — Deploying to Cloud Run</h2>
+
+<p>The image is in Artifact Registry, the secrets are in Secret Manager, the database has tables. We wire it all together with one <code>gcloud run deploy</code> command — which we put in a shell script (<code>backend/deploy.sh</code>) because zsh kept mangling the line continuations when pasted:</p>
+
+<pre><code>gcloud run deploy torch-backend \
+  --image="$IMAGE" \
+  --region="$REGION" \
+  --platform=managed \
+  --allow-unauthenticated \
+  --add-cloudsql-instances="$INSTANCE_CONN" \
+  --set-secrets=DATABASE_URL=torch-database-url:latest,JWT_SECRET=torch-jwt-secret:latest \
+  --set-env-vars=NODE_ENV=production,FRONTEND_URL=https://torch-snowy.vercel.app,COOKIE_SECURE=true \
+  --port=8080 \
+  --memory=512Mi \
+  --cpu=1 \
+  --min-instances=0 \
+  --max-instances=3 \
+  --timeout=60</code></pre>
+
+<p>Every flag, decoded:</p>
+
+<table>
+  <thead><tr><th>Flag</th><th>What it does, and why</th></tr></thead>
+  <tbody>
+    <tr><td><code>--allow-unauthenticated</code></td><td>Makes the URL reachable from the public internet. Without this, every request needs a Google identity token — which a browser cannot provide. App-level JWT auth handles real security.</td></tr>
+    <tr><td><code>--add-cloudsql-instances</code></td><td>Attaches the Cloud SQL instance as a Unix socket at <code>/cloudsql/&lt;CONN&gt;</code>. The DATABASE_URL’s <code>host=</code> parameter points here.</td></tr>
+    <tr><td><code>--set-secrets</code></td><td>Injects each Secret Manager secret as the named env var at container start. The <code>:latest</code> suffix means new secret versions are picked up on the next deploy.</td></tr>
+    <tr><td><code>--set-env-vars</code></td><td>Non-sensitive env: production mode, CORS allowlist, cookie flag.</td></tr>
+    <tr><td><code>--memory=512Mi --cpu=1</code></td><td>Smallest sensible footprint for a Node app. Easy to bump.</td></tr>
+    <tr><td><code>--min-instances=0</code></td><td>Scale to zero when idle. The cold-start trade-off discussed earlier.</td></tr>
+    <tr><td><code>--max-instances=3</code></td><td>Cost guardrail. Cloud Run autoscales between min and max; the max is just a ceiling to prevent runaway spikes from running up the bill. Default if omitted is 100.</td></tr>
+    <tr><td><code>--timeout=60</code></td><td>Max time a request can take before Cloud Run kills it.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="step9">Step 9 — Making the service publicly invokable</h2>
+
+<p>The <code>--allow-unauthenticated</code> flag tries to set an IAM binding (<code>allUsers → roles/run.invoker</code>) on the service. That requires <code>run.services.setIamPolicy</code>, which <code>Editor</code> does not grant. So the deploy succeeded but the binding failed with a warning. The org owner granted <code>Cloud Run Admin</code>, and then:</p>
+
+<pre><code>gcloud run services add-iam-policy-binding torch-backend \
+  --region=us-central1 \
+  --member=allUsers \
+  --role=roles/run.invoker</code></pre>
+
+<div class="callout">
+<strong>The mental model for the two IAM walls we hit</strong>
+<p><code>Editor</code> is a broad role — it can do almost anything <em>except</em> grant access to others. That gate is intentionally separate for each service. So for any GCP service where you also need to manage <em>who can reach it</em>, you typically need that service’s <em>Admin</em> role in addition. We needed it twice: once for Secret Manager (to grant the Cloud Run SA secret access) and once for Cloud Run (to grant the world the ability to invoke the service).</p>
+</div>
+
+<h2 id="wiring">Wiring the frontend to the backend</h2>
+
+<p>The last step is purely on the Vercel side. We added an environment variable to the Vercel project:</p>
+
+<pre><code>NEXT_PUBLIC_API_URL=https://torch-backend-746208330214.us-central1.run.app</code></pre>
+
+<p>Triggered a redeploy. The frontend now calls the live backend.</p>
+
+<p>A few quiet details that worked out in our favor:</p>
+
+<ul>
+  <li><strong>HTTPS:</strong> Cloud Run terminates TLS automatically with a Google-managed certificate. Nothing to configure.</li>
+  <li><strong>Cookies were a non-issue</strong> because the backend uses <code>Authorization: Bearer &lt;token&gt;</code> rather than cookies. If it had used cookies, we’d have needed <code>SameSite=None; Secure</code> for the Vercel-domain → Cloud Run-domain cross-site path.</li>
+  <li><strong>CORS:</strong> the backend reads <code>FRONTEND_URL</code> from env and configures <code>cors({ origin })</code> accordingly. We set it to the Vercel URL; preview deployments at <code>torch-snowy-&lt;hash&gt;.vercel.app</code> would currently be blocked — a small thing to revisit when we use previews.</li>
+</ul>
+
+<h2 id="living">Living with the deploy — questions that come up after</h2>
+
+<p>Once the service is live, a handful of questions surface within the first week. Worth pinning them down now.</p>
+
+<h3>Does Cloud SQL keep running always? Should it?</h3>
+
+<p>Yes — Cloud SQL is a persistent VM that runs Postgres 24/7. Unlike Cloud Run, it doesn’t scale to zero, because a database is stateful and can’t simply disappear between requests. That’s where most of the ~$8/month bill comes from.</p>
+
+<p>You <em>can</em> stop it manually if you know nobody (real users <em>or</em> you) will hit the backend for a while:</p>
+
+<pre><code>gcloud sql instances patch torch-db --activation-policy=NEVER   # stop
+gcloud sql instances patch torch-db --activation-policy=ALWAYS  # start</code></pre>
+
+<p>While stopped, every request that touches the DB fails. Only useful as a knob for long off-periods on dev environments — for a production app you want available on demand, leave it on.</p>
+
+<h3>When does the image get rebuilt? Will the 974 MB upload happen every time?</h3>
+
+<p>The image only rebuilds when you <em>choose</em> to rebuild it — there’s no auto-trigger watching the repo. Specifically, you re-run <code>gcloud builds submit</code> only when:</p>
+
+<ul>
+  <li>Backend source under <code>backend/src/**</code> changed.</li>
+  <li>Backend dependencies in <code>backend/package.json</code> changed.</li>
+  <li>The Dockerfile, the Prisma schema, or the <code>tea-core</code> package changed.</li>
+</ul>
+
+<p>Frontend changes, env-var tweaks, secret rotations — none of those require a rebuild. Cloud Run also doesn’t care about new frontend deploys on Vercel; they’re entirely separate services.</p>
+
+<p>About the upload bloat: that 974 MB tarball was a one-time mistake from the first build before we had a <code>.gcloudignore</code>. Now that the file exists at <code>torch_product/.gcloudignore</code>, future uploads will exclude <code>node_modules</code>, <code>dist</code>, the frontend, and anything else not needed by the Docker context. Expect subsequent builds to upload only a few MB. You can confirm by watching the first line of the next build’s output:</p>
+
+<pre><code>Creating temporary archive of N file(s) totalling X MiB before compression.</code></pre>
+
+<h3>Where does <code>.env</code> live, and how does the backend find its env vars in two different environments?</h3>
+
+<p>Three different worlds, three different sources of truth:</p>
+
+<table>
+  <thead><tr><th>Environment</th><th>Where env vars come from</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Local dev</strong><br/><code>npm run dev</code></td>
+      <td>A <code>backend/.env</code> file. <code>dotenv</code> reads it at startup and populates <code>process.env</code>. Has local-friendly defaults: <code>localhost:5432</code>, placeholder JWT secret, <code>FRONTEND_URL=http://localhost:3001</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>Cloud Build</strong><br/>(during <code>builds submit</code>)</td>
+      <td>None. Builds just run <code>docker build</code> — nothing reads env vars at this stage. Secrets and config are not embedded in the image.</td>
+    </tr>
+    <tr>
+      <td><strong>Cloud Run</strong><br/>(production runtime)</td>
+      <td>No <code>.env</code> file inside the container. Cloud Run injects vars from <code>--set-env-vars</code> (plain) and <code>--set-secrets</code> (Secret Manager) directly as OS env vars at container start. <code>dotenv</code> finds no file, does nothing, and <code>process.env</code> is already populated.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The clean part of this design: <code>src/config/env.ts</code> is the <strong>same code</strong> in all three. It calls <code>dotenv.config()</code> (a no-op in Cloud Run since no file exists), then reads from <code>process.env</code> with safe defaults. Nothing downstream of <code>env.ts</code> knows or cares which environment is feeding it.</p>
+
+<p>Two safety notes worth pinning to the wall:</p>
+
+<ul>
+  <li><strong><code>.env</code> is in <code>.gitignore</code>.</strong> It must never be committed. The committed <code>.env.example</code> is the template — anyone cloning the repo copies that file to <code>.env</code> and fills in their own local values.</li>
+  <li><strong>Cloud Run’s env vars are visible in the GCP console</strong> to anyone with read access to the service. Anything sensitive (DB password, JWT secret) goes through Secret Manager, not <code>--set-env-vars</code>. That’s why <code>DATABASE_URL</code> and <code>JWT_SECRET</code> are bound from secrets and <code>FRONTEND_URL</code> / <code>NODE_ENV</code> are plain.</li>
+</ul>
+
+<h3>So how does the backend know which frontend URL to allow for CORS?</h3>
+
+<p>From a single variable, <code>FRONTEND_URL</code>, set in <em>whichever environment you’re running in</em>:</p>
+
+<ul>
+  <li>Locally: <code>FRONTEND_URL=http://localhost:3001</code> from <code>backend/.env</code>.</li>
+  <li>On Cloud Run: <code>FRONTEND_URL=https://torch-snowy.vercel.app</code> from the <code>--set-env-vars</code> flag we passed at deploy.</li>
+</ul>
+
+<p>The wiring is one line in <code>src/app.ts</code>:</p>
+
+<pre><code>app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));</code></pre>
+
+<p>Same code, different env, different allowlist. To see what’s actually live in production right now:</p>
+
+<pre><code>gcloud run services describe torch-backend --region=us-central1 \
+  --format='value(spec.template.spec.containers[0].env)'</code></pre>
+
+<p>To change it without rebuilding the image (e.g., when we map a custom domain):</p>
+
+<pre><code>gcloud run services update torch-backend --region=us-central1 \
+  --set-env-vars=FRONTEND_URL=https://api.torch.lemnisca.bio</code></pre>
+
+<p>Cloud Run starts a new revision with the updated env and shifts traffic over. No image rebuild, no downtime.</p>
+
+<div class="callout warn">
+<strong>CORS only matches the exact string</strong>
+<p><code>cors({ origin })</code> accepts a string or an array — and does an exact match. So <code>https://torch-snowy.vercel.app</code> passes, but Vercel preview URLs like <code>https://torch-snowy-git-feature-xyz.vercel.app</code> get blocked. Not an issue today, but if we want preview deployments to talk to the backend later, swap <code>origin</code> for a regex-based function that allows the production URL, all preview subdomains, and localhost. Trivial to add when needed.</p>
+</div>
+
+<h2 id="left">What’s still left</h2>
+
+<p>The backend is live and serving traffic, but the deploy story isn’t fully “done” in the long-term sense. In rough order of importance:</p>
+
+<ol>
+  <li><strong>Set a billing budget alert.</strong> Three minutes in the GCP console; catches runaway costs (bugs, abuse) before they become real money.</li>
+  <li><strong>Map a custom domain</strong> like <code>api.torch.lemnisca.bio</code> — cleaner and decouples the URL from any specific deploy.</li>
+  <li><strong>Rate limiting.</strong> Cloud Run doesn’t throttle anything by itself; an <code>express-rate-limit</code> middleware is a few lines of code.</li>
+  <li><strong>Push-to-deploy.</strong> A Cloud Build trigger (or GitHub Action) that builds and deploys on every push to <code>main</code>.</li>
+  <li><strong>Firebase Auth swap.</strong> The original architecture plan; the current bcrypt+JWT works fine and can be migrated later.</li>
+  <li><strong>PDF generation worker.</strong> Explicitly deferred — separate Cloud Run service, Cloud Tasks queue, Cloud Storage bucket.</li>
+</ol>
+
+<h2 id="bills">A note on cost</h2>
+
+<p>At rest, this whole stack should sit at roughly:</p>
+
+<table>
+  <thead><tr><th>Component</th><th>Approx. monthly cost</th></tr></thead>
+  <tbody>
+    <tr><td>Cloud SQL <code>db-f1-micro</code> (always on)</td><td>~$8</td></tr>
+    <tr><td>Cloud Run (min-instances=0, idle)</td><td>$0</td></tr>
+    <tr><td>Artifact Registry storage (one image, ~180 MB)</td><td>&lt; $0.01</td></tr>
+    <tr><td>Secret Manager (two secrets)</td><td>$0 (under free tier)</td></tr>
+    <tr><td>Cloud Build (first build was free; subsequent builds are ~$0.003/min)</td><td>~$0.10/mo</td></tr>
+    <tr><td>Cloud Logging</td><td>$0 at low volume</td></tr>
+    <tr><td><strong>Total at idle</strong></td><td><strong>~$8</strong></td></tr>
+  </tbody>
+</table>
+
+<p>Traffic-driven costs are the only thing that grows from here, and at our user scale they won’t move the needle. The dominant cost will remain Cloud SQL — and the cheapest way to halve it once the app is on real users is to switch the instance to “Zonal” (single zone, no HA) which it already is by default, and keep <code>storage-auto-increase</code> on so we never over-provision disk.</p>
+
+<hr />
+
+<p class="footnote">That’s the whole walkthrough. If you’re repeating this for a sibling service (the PDF worker, eventually), the only steps that change are: a new Artifact Registry image name, a new Cloud Run service, and the env vars / secrets it needs. Everything else — project, region, SQL instance, IAM bindings — is shared.</p>
+
+</div>
+</body>
+</html>
