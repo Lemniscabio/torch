@@ -223,7 +223,7 @@ export function ProcessStep() {
             />
           </Field>
           <Field
-            label="Cooling water inlet"
+            label="Cooling utility inlet"
             htmlFor="t_cw_inlet"
             error={errors.t_cw_inlet?.message}
           >
