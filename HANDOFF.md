@@ -10,22 +10,46 @@ Everything below is context those files don't carry.
 
 ## Where work happens
 
-- **Active code lives in `torch_product/`.** Frontend, backend, and the shared `packages/tea-core` engine.
+- **Active code lives in `torch_product/`.** Frontend, backend, and TWO shared packages.
 - **`product_v1/` is legacy / read-only.** Old CRUD scaffolding only — no engine, not deployed. Do not edit it.
 - Default branch is `main`. We push directly to it.
 
+### The tea-core split (important to understand before touching either package)
+
+`packages/` contains two packages, deliberately separated to prevent engine math from being bundled into the static frontend:
+
+| Package | Contents | Who imports it |
+|---|---|---|
+| `@torch/core-shared` (in `packages/tea-core-shared/`) | TypeScript types, input bounds, scale-up envelopes, defaults, equipment metadata, what-if catalog (labels, domain mapping, conflict pairs), stepper helpers, OD→CDW conversion factors | Frontend + backend |
+| `@torch/core` (in `packages/tea-core/`) | The engine: `runAssessment`, `runWhatIf`, derivations, all five risk calculators, organism kinetics, scoring rubrics, correlations, heat-transfer constants. Depends on `@torch/core-shared` for types. | Backend only |
+
+Both packages compile to `dist/` (CommonJS, generated on install). The frontend has `transpilePackages: ['@torch/core-shared']` in `next.config.ts` — explicitly NOT including `@torch/core` so the engine source cannot leak into the static bundle.
+
+**Frontend's `package.json` build script** runs `npm --prefix ../packages/tea-core-shared install && npm run build` before `next build`, ensuring tea-core-shared's `dist/` is fresh on every Vercel deploy.
+
+**Backend's Dockerfile** installs and builds both packages before `tsc` compiles `backend/src/`.
+
+### Engine is server-side
+
+- `POST /api/assessments/preview` — compute, no save. Public. Used by `/example` and unauthed assess flow.
+- `POST /api/assessments/save` — compute + persist. Authed. Used after sign-in.
+- `POST /api/assessments/whatif` — apply target-scale modifications and return all five recomputed domain scores + modified inputs + new primary bottleneck + flags.
+
+The frontend never runs `runAssessment` or `runWhatIf` directly. If you see those imports in the frontend, something regressed.
+
 ## Open issues (resolve before claiming everything works)
 
-### 1. React hydration mismatch on the assess wizard
-Manifests as a "Hydration failed because the server rendered HTML didn't match the client" warning on `/assess`. The diff in the inspector points at `aria-checked` on a radio in Step 3.
+### 1. React hydration mismatch on the assess wizard (may still apply)
+Manifests as "Hydration failed because the server rendered HTML didn't match the client" on `/assess`. Diff in inspector points at `aria-checked` on a radio in Step 3.
 
-**Suspected root cause:** the wizard form state is restored from a client-only source (localStorage / sessionStorage / URL params) *after* hydration, so the first server render and first client render disagree on selected radio options. My most recent change (`8bec8e6` — scale-dependent RPM/VVM hints driven by `watch('v_lab')`) likely surfaced or amplified it; not necessarily the root cause.
+Suspected root cause: wizard form state restored from a client-only source (localStorage / sessionStorage / URL params) *after* hydration, so the first server render and first client render disagree on selected radio options.
 
-**Diagnosis steps for whoever picks this up:**
+Diagnosis steps:
 - Repro locally: `cd torch_product/frontend && npm run dev`, open `http://localhost:3001/assess`.
-- Confirm whether the error appears with the assess wizard freshly visited vs. after navigating through a few steps (i.e. is the form state empty or restored when the error fires).
-- `git stash` the changes from `8bec8e6` and check whether the error still appears — that tells you whether the hint addition is causal or just exposed an existing issue.
-- Likely fix patterns: a mount-guard on the assess shell (`useEffect → setMounted(true); if (!mounted) return null`), or marking the assess route dynamic, or moving form-state restoration into a `useEffect` so SSR always sees the empty defaults.
+- Confirm whether the error appears on first-visit (no saved state) vs. after navigating through a few steps (state in storage).
+- Likely fix patterns: mount-guard on the assess shell (`useEffect → setMounted(true); if (!mounted) return null`), or move form-state restoration into a `useEffect` so SSR always sees empty defaults.
+
+Status unconfirmed at last update — may have been resolved incidentally by other changes; verify before debugging.
 
 ## Ephemeral runtime values
 
@@ -71,7 +95,14 @@ The two cases that are easy to forget:
 
 ## Last verified state
 
-- **Backend:** deployed at revision `torch-backend-00003-tvt`. `/api/health` returns 200.
+- **Backend:** Cloud Run service `torch-backend` at image tag `v6` (or higher — check `gcloud run services describe`). `/api/health` returns 200. Endpoints: `/api/assessments/preview`, `/save`, `/whatif`, plus the original CRUD routes.
 - **Frontend:** deployed on Vercel at `torch-snowy.vercel.app`, hitting the Cloud Run URL via `NEXT_PUBLIC_BACKEND_URL`.
-- **`main` branch HEAD:** `8bec8e6` — "Wire scale-dependent RPM/VVM bounds in Step 3".
 - **Database:** `torch` DB on `torch-db` instance, single applied migration (`20260516010618_init`). User + Assessment tables exist; no real user data yet (test data only).
+- **Last big architectural change:** engine split into `tea-core` (private) + `tea-core-shared` (public), `runAssessment` moved server-side, what-if analysis fully wired through both packages. See `git log --oneline` for the exact commits.
+
+## What's left (high level — full list in root README)
+
+Must-do: billing budget alert on the GCP project.
+Should-do: custom domain (`api.torch.lemnisca.bio`), rate limiting (`express-rate-limit`), CI/CD on push.
+Nice-to-have: Firebase Auth swap, structured logging.
+Deferred by user: PDF / report generation pipeline (Cloud Run worker + Cloud Tasks + Cloud Storage).
