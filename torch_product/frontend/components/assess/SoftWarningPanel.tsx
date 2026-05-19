@@ -15,7 +15,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { SOFT_WARNING_BOUNDS } from '@torch/core-shared';
 import type { AssessFormValues } from '@/lib/assess-schema';
 
-const HIGH_DENSITY_BIOMASS = 50;
+const HIGH_DENSITY_BIOMASS = 60;
 
 function num(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -27,11 +27,11 @@ function computeWarnings(form: Partial<AssessFormValues>): string[] {
 
   const vLab = num(form.v_lab);
   const vTarget = num(form.v_target);
-  if (vLab !== null && vTarget !== null && vLab > 0 && vTarget / vLab > SOFT_WARNING_BOUNDS.scale_ratio_extreme) {
-    warnings.push(
-      `Scale ratio above ${SOFT_WARNING_BOUNDS.scale_ratio_extreme.toLocaleString()}× — predictions carry very high uncertainty.`,
-    );
-  }
+  // if (vLab !== null && vTarget !== null && vLab > 0 && vTarget / vLab > SOFT_WARNING_BOUNDS.scale_ratio_extreme) {
+  //   warnings.push(
+  //     `Scale ratio above ${SOFT_WARNING_BOUNDS.scale_ratio_extreme.toLocaleString()}× — predictions carry very high uncertainty.`,
+  //   );
+  // }
 
   const temp = num(form.temperature);
   if (
@@ -45,12 +45,12 @@ function computeWarnings(form: Partial<AssessFormValues>): string[] {
 
   const hdLab = num(form.h_d_lab);
   const hdTarget = num(form.h_d_target);
-  if ((hdLab !== null && hdLab > SOFT_WARNING_BOUNDS.h_d_mixing_uncertainty) ||
-      (hdTarget !== null && hdTarget > SOFT_WARNING_BOUNDS.h_d_mixing_uncertainty)) {
-    warnings.push(
-      `H/D above ${SOFT_WARNING_BOUNDS.h_d_mixing_uncertainty} — mixing-time estimate carries additional uncertainty.`,
-    );
-  }
+  // if ((hdLab !== null && hdLab > SOFT_WARNING_BOUNDS.h_d_mixing_uncertainty) ||
+  //     (hdTarget !== null && hdTarget > SOFT_WARNING_BOUNDS.h_d_mixing_uncertainty)) {
+  //   warnings.push(
+  //     `H/D above ${SOFT_WARNING_BOUNDS.h_d_mixing_uncertainty} — mixing-time estimate carries additional uncertainty.`,
+  //   );
+  // }
 
   const biomass = num(form.biomass_cdw_g_l);
   if (biomass !== null && biomass >= HIGH_DENSITY_BIOMASS) {
@@ -60,14 +60,14 @@ function computeWarnings(form: Partial<AssessFormValues>): string[] {
   }
 
   const vvm = num(form.vvm);
-  if (
-    vvm !== null &&
-    (vvm < SOFT_WARNING_BOUNDS.vvm_gassed_power.min || vvm > SOFT_WARNING_BOUNDS.vvm_gassed_power.max)
-  ) {
-    warnings.push(
-      `VVM outside ${SOFT_WARNING_BOUNDS.vvm_gassed_power.min}–${SOFT_WARNING_BOUNDS.vvm_gassed_power.max} — gassed-power correction is extrapolated.`,
-    );
-  }
+  // if (
+  //   vvm !== null &&
+  //   (vvm < SOFT_WARNING_BOUNDS.vvm_gassed_power.min || vvm > SOFT_WARNING_BOUNDS.vvm_gassed_power.max)
+  // ) {
+  //   warnings.push(
+  //     `VVM outside ${SOFT_WARNING_BOUNDS.vvm_gassed_power.min}–${SOFT_WARNING_BOUNDS.vvm_gassed_power.max} — gassed-power correction is extrapolated.`,
+  //   );
+  // }
 
   return warnings;
 }
@@ -101,7 +101,7 @@ export function SoftWarningPanel() {
             className="text-[12.5px] font-medium tracking-[-0.005em]"
             style={{ color: 'var(--color-warning-fg)' }}
           >
-            Outside validated envelope
+            Caution
           </p>
           <ul className="mt-2 space-y-1.5">
             {warnings.map((w) => (

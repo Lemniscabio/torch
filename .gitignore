@@ -8,6 +8,9 @@ frontend/out/
 # backend build
 backend/dist/
 
+# packages build outputs (tea-core, tea-core-shared compile to dist/)
+torch_product/packages/*/dist/
+
 # production
 /build
 

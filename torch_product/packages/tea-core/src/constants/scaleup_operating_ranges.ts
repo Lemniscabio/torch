@@ -1,2 +1,2 @@
-// Canonical home is @torch/core-shared. See ./input_bounds.ts for why.
+// Canonical home is @torch/core-shared.
 export * from "@torch/core-shared";
