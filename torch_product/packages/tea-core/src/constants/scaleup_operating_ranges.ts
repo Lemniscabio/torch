@@ -79,7 +79,7 @@ export const SCALEUP_OPERATING_RANGES: ScaleupOperatingRange[] = [
 ];
 
 export const VESSEL_GEOMETRY_CONSTRAINTS = {
-  min_impeller_spacing_tank_diameters: 0.8, // minimum centre-to-centre spacing as a multiple of D_T
+  min_impeller_spacing_tank_diameters: 0.4, // minimum centre-to-centre spacing as a multiple of D_T
   max_impeller_count: 4,
 } as const;
 
