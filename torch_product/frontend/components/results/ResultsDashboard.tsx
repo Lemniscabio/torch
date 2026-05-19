@@ -44,16 +44,16 @@ function metricFor(key: DomainKey, r: PartialAssessmentResult): string {
       return `Score = ${v.toFixed(2)}`;
     }
     case 'mixing':
-      return `Score = ${r.mixing.process_mixing_ratio_target.toFixed(3)}`;
+      return `Score = ${r.mixing.process_mixing_ratio_target.toFixed(1)}`;
     case 'shear':
-      return `Score = ${r.shear.tip_speed_margin.toFixed(2)}`;
+      return `Score = ${r.shear.tip_speed_margin.toFixed(1)}`;
     case 'co2': {
       if (!r.co2.activated) return 'Not activated';
       const v = r.co2.target?.pco2_margin ?? r.co2.pco2_margin;
-      return v !== undefined && Number.isFinite(v) ? `Score = ${v.toFixed(2)}` : 'Score = ∞';
+      return v !== undefined && Number.isFinite(v) ? `Score = ${v.toFixed(1)}` : 'Score = ∞';
     }
     case 'heat':
-      return `Score = ${(r.heat.target?.heat_transfer_margin ?? r.heat.heat_transfer_margin ?? 0).toFixed(2)}`;
+      return `Score = ${(r.heat.target?.heat_transfer_margin ?? r.heat.heat_transfer_margin ?? 0).toFixed(1)}`;
   }
 }
 
