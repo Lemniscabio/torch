@@ -5,13 +5,15 @@
 // detail panel for the selected card, projections table, and a sticky
 // bottom bar (PDF placeholder for v1 — wired up in P2).
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type {
+  FeedingFrequency,
   PartialAssessmentResult,
   ProcessInputs,
   RiskScore,
 } from '@torch/core-shared';
+import { MODIFICATION_CONFLICTS } from '@torch/core-shared';
 import { api } from '@/lib/api';
 import type { ModificationId, WhatIfResult } from '@/lib/whatif-types';
 import { Radar } from './Radar';
@@ -82,28 +84,48 @@ function scaleCriterionLabel(value: ProcessInputs['scaleup_criterion']) {
 export function ResultsDashboard({ inputs, results, isExample = false }: Props) {
   const [selected, setSelected] = useState<DomainKey>(() => results.primary_bottleneck.domain ?? 'otr');
 
-  // Shared what-if state — all five DomainDetail panels read from this and
-  // toggle into it. A modification applied in one panel affects every other
-  // panel's "With modifications" column too (a physical change to the
-  // reactor affects every domain).
+  // Shared what-if state across all five panels.
+  //   • activeModifications: discrete on/off toggles from the catalog
+  //   • oxygenLevel: continuous stepper for o2_inlet (% O₂)
+  //   • feedFrequency: continuous stepper for feed pulse interval
+  // Any one change to a physical input affects every domain's risk score, so
+  // state lives here (not per-panel).
   const [activeModifications, setActiveModifications] = useState<Set<ModificationId>>(
     () => new Set(),
   );
+  const [oxygenLevel, setOxygenLevel] = useState<number | undefined>(undefined);
+  const [feedFrequency, setFeedFrequency] = useState<FeedingFrequency | undefined>(undefined);
+
   const [whatIfResult, setWhatIfResult] = useState<WhatIfResult | null>(null);
   const [whatIfLoading, setWhatIfLoading] = useState(false);
   const fetchSeqRef = useRef(0);
 
+  const hasAnyMod = activeModifications.size > 0 || oxygenLevel !== undefined || feedFrequency !== undefined;
+
   const toggleModification = (id: ModificationId) => {
     setActiveModifications((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        // Drop any conflicting modifications before adding this one.
+        for (const conflict of MODIFICATION_CONFLICTS[id] ?? []) {
+          next.delete(conflict);
+        }
+        next.add(id);
+      }
       return next;
     });
   };
 
+  const clearAllModifications = () => {
+    setActiveModifications(new Set());
+    setOxygenLevel(undefined);
+    setFeedFrequency(undefined);
+  };
+
   useEffect(() => {
-    if (activeModifications.size === 0) {
+    if (!hasAnyMod) {
       setWhatIfResult(null);
       setWhatIfLoading(false);
       return;
@@ -115,7 +137,11 @@ export function ResultsDashboard({ inputs, results, isExample = false }: Props) 
       authed: false,
       body: JSON.stringify({
         inputs,
-        params: { active: [...activeModifications] },
+        params: {
+          active: [...activeModifications],
+          oxygen_level: oxygenLevel,
+          feed_frequency: feedFrequency,
+        },
       }),
     })
       .then((data) => {
@@ -130,7 +156,7 @@ export function ResultsDashboard({ inputs, results, isExample = false }: Props) 
           setWhatIfLoading(false);
         }
       });
-  }, [activeModifications, inputs]);
+  }, [activeModifications, oxygenLevel, feedFrequency, inputs, hasAnyMod]);
 
   const bottleneck = results.primary_bottleneck;
   const labScores = scoresAt('lab', results);
@@ -237,9 +263,15 @@ export function ResultsDashboard({ inputs, results, isExample = false }: Props) 
 
       <DomainDetail
         domain={selected}
+        inputs={inputs}
         results={results}
         activeModifications={activeModifications}
         onToggleModification={toggleModification}
+        oxygenLevel={oxygenLevel}
+        onSetOxygenLevel={setOxygenLevel}
+        feedFrequency={feedFrequency}
+        onSetFeedFrequency={setFeedFrequency}
+        onClearAll={clearAllModifications}
         whatIfResult={whatIfResult}
         whatIfLoading={whatIfLoading}
       />

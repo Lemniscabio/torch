@@ -23,12 +23,36 @@ function fmt(n: number | undefined, digits = 2) {
   return n.toFixed(digits);
 }
 
+// Adaptive precision: integers for big values, gradual decimals for small
+// ones. Used across the Scale-Up Projections rows so we don't show
+// "33.00 (1.00)" when "33 (1.0)" is more readable, and avoid losing
+// precision on sub-unit values like impeller diameter 0.11 m.
+function fmtAuto(n: number | undefined): string {
+  if (n === undefined || !Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  if (abs >= 100) return Math.round(n).toLocaleString('en-US');
+  if (abs >= 10)  return Math.round(n).toString();
+  if (abs >= 1)   return n.toFixed(1);
+  return n.toFixed(2);
+}
+
+function rangeAuto(lo: number | undefined, hi: number | undefined): string {
+  if (lo === undefined || hi === undefined) return '—';
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return '—';
+  // Collapse if both end up rendering identically.
+  const loStr = fmtAuto(lo);
+  const hiStr = fmtAuto(hi);
+  if (loStr === hiStr) return loStr;
+  return `${loStr} – ${hiStr}`;
+}
+
 function midNumber(lab: number | undefined, target: number | undefined): number | undefined {
   if (lab === undefined || target === undefined) return undefined;
   if (!Number.isFinite(lab) || !Number.isFinite(target)) return undefined;
   if (lab > 0 && target > 0) return Math.sqrt(lab * target);
   return (lab + target) / 2;
 }
+
 
 function rows(inputs: ProcessInputs, r: PartialAssessmentResult): Row[] {
   const configs: ReactorScaleConfigs | undefined = r.reactor_configs;
@@ -42,63 +66,79 @@ function rows(inputs: ProcessInputs, r: PartialAssessmentResult): Row[] {
   return [
     {
       label: 'Impeller RPM (rpm)',
-      lab: fmt(configs.lab.rpm, 0),
-      pilot: fmt(midNumber(configs.lab.rpm, configs.target.rpm), 0),
-      target: fmt(configs.target.rpm, 0),
+      lab: fmtAuto(configs.lab.rpm),
+      pilot: fmtAuto(midNumber(configs.lab.rpm, configs.target.rpm)),
+      target: fmtAuto(configs.target.rpm),
     },
     {
       label: 'Aeration rate (L/min, vvm)',
-      lab: `${fmt(labAeration, 2)} (${fmt(inputs.vvm, 2)})`,
-      pilot: `${fmt(midNumber(labAeration, targetAeration), 2)} (${fmt(midNumber(inputs.vvm, configs.target.vvm), 2)})`,
-      target: `${fmt(targetAeration, 2)} (${fmt(configs.target.vvm, 2)})`,
+      lab: `${fmtAuto(labAeration)} (${fmtAuto(inputs.vvm)})`,
+      pilot: `${fmtAuto(midNumber(labAeration, targetAeration))} (${fmtAuto(midNumber(inputs.vvm, configs.target.vvm))})`,
+      target: `${fmtAuto(targetAeration)} (${fmtAuto(configs.target.vvm)})`,
     },
     {
       label: 'Impeller diameter (m)',
-      lab: fmt(configs.lab.geometry.d_imp, 2),
-      pilot: fmt(midNumber(configs.lab.geometry.d_imp, configs.target.geometry.d_imp), 2),
-      target: fmt(configs.target.geometry.d_imp, 2),
+      lab: fmtAuto(configs.lab.geometry.d_imp),
+      pilot: fmtAuto(midNumber(configs.lab.geometry.d_imp, configs.target.geometry.d_imp)),
+      target: fmtAuto(configs.target.geometry.d_imp),
     },
     {
       label: 'Reactor height (m)',
-      lab: fmt(configs.lab.geometry.h_liquid, 2),
-      pilot: fmt(midNumber(configs.lab.geometry.h_liquid, configs.target.geometry.h_liquid), 2),
-      target: fmt(configs.target.geometry.h_liquid, 2),
+      lab: fmtAuto(configs.lab.geometry.h_liquid),
+      pilot: fmtAuto(midNumber(configs.lab.geometry.h_liquid, configs.target.geometry.h_liquid)),
+      target: fmtAuto(configs.target.geometry.h_liquid),
     },
-    {
-      label: 'kLa achievable (h⁻¹)',
-      lab: fmt(r.otr.kla_lab, 1),
-      pilot: fmt(midNumber(r.otr.kla_lab, r.otr.kla_target_moderate), 1),
-      target: fmt(r.otr.kla_target_moderate, 1),
-    },
-    {
-      label: 'Mixing time (s)',
-      lab: fmt(r.mixing.theta_mix_lab, 1),
-      pilot: fmt(midNumber(r.mixing.theta_mix_lab, r.mixing.theta_mix_target), 1),
-      target: fmt(r.mixing.theta_mix_target, 1),
-    },
+    (() => {
+      // kLa: use real ensemble min/max from reactor_configs (engine truth —
+      // spans Van't Riet, Ruszkowski, etc.).
+      const labLo = configs.lab.kla_ensemble.min;
+      const labHi = configs.lab.kla_ensemble.max;
+      const targetLo = configs.target.kla_ensemble.min;
+      const targetHi = configs.target.kla_ensemble.max;
+      return {
+        label: 'kLa achievable (h⁻¹)',
+        lab:    rangeAuto(labLo, labHi),
+        pilot:  rangeAuto(midNumber(labLo, targetLo), midNumber(labHi, targetHi)),
+        target: rangeAuto(targetLo, targetHi),
+      };
+    })(),
+    (() => {
+      // Mixing time: real ensemble min/max from the engine (Grenville-Nienow
+      // + Ruszkowski correlations). Falls back to mean if min/max absent.
+      const labLo    = r.mixing.theta_mix_lab_min    ?? r.mixing.theta_mix_lab;
+      const labHi    = r.mixing.theta_mix_lab_max    ?? r.mixing.theta_mix_lab;
+      const targetLo = r.mixing.theta_mix_target_min ?? r.mixing.theta_mix_target;
+      const targetHi = r.mixing.theta_mix_target_max ?? r.mixing.theta_mix_target;
+      return {
+        label: 'Mixing time (s)',
+        lab:    rangeAuto(labLo,    labHi),
+        pilot:  rangeAuto(midNumber(labLo, targetLo), midNumber(labHi, targetHi)),
+        target: rangeAuto(targetLo, targetHi),
+      };
+    })(),
     {
       label: 'Tip speed (m/s)',
-      lab: fmt(r.shear.tip_speed_lab, 2),
-      pilot: fmt(midNumber(r.shear.tip_speed_lab, r.shear.tip_speed), 2),
-      target: fmt(r.shear.tip_speed, 2),
+      lab: fmtAuto(r.shear.tip_speed_lab),
+      pilot: fmtAuto(midNumber(r.shear.tip_speed_lab, r.shear.tip_speed)),
+      target: fmtAuto(r.shear.tip_speed),
     },
     {
       label: 'pCO₂ at bottom (bar)',
-      lab: fmt(labPco2, 2),
-      pilot: fmt(midNumber(labPco2, targetPco2), 2),
-      target: fmt(targetPco2, 2),
+      lab: fmtAuto(labPco2),
+      pilot: fmtAuto(midNumber(labPco2, targetPco2)),
+      target: fmtAuto(targetPco2),
     },
     {
       label: 'Metabolic heat (kW)',
-      lab: fmt(r.heat.lab?.q_metabolic, 2),
-      pilot: fmt(midNumber(r.heat.lab?.q_metabolic, r.heat.target?.q_metabolic ?? r.heat.q_metabolic), 2),
-      target: fmt(r.heat.target?.q_metabolic ?? r.heat.q_metabolic, 2),
+      lab: fmtAuto(r.heat.lab?.q_metabolic),
+      pilot: fmtAuto(midNumber(r.heat.lab?.q_metabolic, r.heat.target?.q_metabolic ?? r.heat.q_metabolic)),
+      target: fmtAuto(r.heat.target?.q_metabolic ?? r.heat.q_metabolic),
     },
     {
       label: 'Cooling capacity (kW)',
-      lab: fmt(r.heat.lab?.q_cool_max, 2),
-      pilot: fmt(midNumber(r.heat.lab?.q_cool_max, r.heat.target?.q_cool_max ?? r.heat.q_cool_max), 2),
-      target: fmt(r.heat.target?.q_cool_max ?? r.heat.q_cool_max, 2),
+      lab: fmtAuto(r.heat.lab?.q_cool_max),
+      pilot: fmtAuto(midNumber(r.heat.lab?.q_cool_max, r.heat.target?.q_cool_max ?? r.heat.q_cool_max)),
+      target: fmtAuto(r.heat.target?.q_cool_max ?? r.heat.q_cool_max),
     },
   ];
 }

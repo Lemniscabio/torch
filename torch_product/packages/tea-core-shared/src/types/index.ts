@@ -182,8 +182,12 @@ export interface MixingRiskResult {
   score_target?: RiskScore;                 // Target-scale O2 mixing margin score
   theta_mix_lab: number;                    // Lab mixing time (s) — ensemble mean
   theta_mix_lab_std: number;                // 1-σ from mixing time ensemble
+  theta_mix_lab_min?: number;               // lowest correlation in the lab ensemble (s)
+  theta_mix_lab_max?: number;               // highest correlation in the lab ensemble (s)
   theta_mix_target: number;                 // Target mixing time (s) — ensemble mean
   theta_mix_target_std: number;             // 1-σ from mixing time ensemble
+  theta_mix_target_min?: number;            // lowest correlation in the target ensemble (s)
+  theta_mix_target_max?: number;            // highest correlation in the target ensemble (s)
   process_mixing_ratio_lab:       number;   // τ_process / τ_mix at lab scale
   process_mixing_ratio_lab_std:   number;   // 1-σ propagated from mixing time uncertainty
   process_mixing_ratio_target:    number;   // τ_process / τ_mix at target scale

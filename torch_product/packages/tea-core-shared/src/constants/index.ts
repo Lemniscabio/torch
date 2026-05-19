@@ -4,3 +4,4 @@ export * from "./scaleup_operating_ranges";
 export * from "./defaults";
 export * from "./equipment";
 export * from "./kinetics";
+export * from "./whatif";

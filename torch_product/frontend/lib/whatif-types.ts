@@ -1,21 +1,23 @@
 // Frontend-side type declarations for the what-if API response.
-// The engine code lives in @torch/core (backend-only); these are the
-// structural shapes the backend returns from POST /api/assessments/whatif.
+// The math lives in @torch/core (backend-only); these are the structural
+// shapes the backend returns from POST /api/assessments/whatif.
 // Keep in sync with packages/tea-core/src/engine/whatif/types.ts.
 
-import type { RiskScore } from '@torch/core-shared';
+import type {
+  ProcessInputs,
+  PrimaryBottleneck,
+  AssessmentFlag,
+  RiskScore,
+  FeedingFrequency,
+} from '@torch/core-shared';
 
-export type ModificationId =
-  | 'increase_impeller_rpm'
-  | 'decrease_impeller_rpm'
-  | 'increase_aeration_rate'
-  | 'increase_oxygen_saturation'
-  | 'increase_impeller_diameter'
-  | 'decrease_impeller_diameter'
-  | 'switch_to_rushton_impeller'
-  | 'switch_to_pitched_blade_impeller'
-  | 'add_internal_cooling_coils'
-  | 'reduce_feeding_frequency';
+export type { ModificationId, ModificationDefinition } from '@torch/core-shared';
+
+export interface WhatIfParamsRequest {
+  active: string[];                  // array form for JSON; backend converts to Set
+  oxygen_level?: number;             // o2_inlet override (%)
+  feed_frequency?: FeedingFrequency; // feed interval override
+}
 
 export interface WhatIfTargetOtr {
   score: RiskScore;
@@ -62,4 +64,7 @@ export interface WhatIfResult {
   shear: WhatIfTargetShear;
   co2: WhatIfTargetCo2;
   heat: WhatIfTargetHeat;
+  modified_inputs: ProcessInputs;
+  primary_bottleneck: PrimaryBottleneck;
+  flags: AssessmentFlag[];
 }

@@ -1,23 +1,10 @@
-import type { ProcessInputs, RiskDomain, RiskScore, FeedingFrequency, PrimaryBottleneck, AssessmentFlag } from "../../types";
+import type { ProcessInputs, RiskScore, FeedingFrequency, PrimaryBottleneck, AssessmentFlag } from "../../types";
+import type { ModificationId } from "@torch/core-shared";
 
-export type ModificationId =
-  | "increase_impeller_rpm"
-  | "decrease_impeller_rpm"
-  | "increase_aeration_rate"
-  | "increase_oxygen_saturation"
-  | "increase_impeller_diameter"
-  | "decrease_impeller_diameter"
-  | "switch_to_rushton_impeller"
-  | "switch_to_pitched_blade_impeller"
-  | "add_internal_cooling_coils"
-  | "reduce_feeding_frequency";
-
-export interface ModificationDefinition {
-  id: ModificationId;
-  label: string;
-  domains: RiskDomain[];
-  section: "operational" | "design";
-}
+// ModificationId + ModificationDefinition live in @torch/core-shared (the
+// catalog is presentation metadata, not math). Re-exported here for engine
+// callsites that import from "./types".
+export type { ModificationId, ModificationDefinition } from "@torch/core-shared";
 
 export interface WhatIfParams {
   active: ReadonlySet<ModificationId>;

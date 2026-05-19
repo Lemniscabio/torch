@@ -2,60 +2,50 @@
 
 // Expanded panel for the currently-selected domain card. Layout mirrors
 // old's DetailScaffold (old:656-728): plain-language question + fraction
-// notation + threshold band reference + lab/target score columns.
+// notation + threshold band reference + lab/target/with-mods score columns.
+//
+// Target-scale what-if controls are filtered by the engine's catalog so
+// each panel only shows modifications that affect its domain. Two
+// continuous knobs (oxygen-level stepper, feed-frequency stepper) appear
+// only on the panels that read them.
 
-import type { PartialAssessmentResult, RiskScore } from '@torch/core-shared';
+import type {
+  AssessmentFlag,
+  FeedingFrequency,
+  PartialAssessmentResult,
+  ProcessInputs,
+  RiskScore,
+} from '@torch/core-shared';
+import {
+  MODIFICATION_CATALOG,
+  FEEDING_FREQUENCY_LABELS,
+  oxygenLevelsFromBaseline,
+  stepOxygenLevel,
+  stepFeedFrequency,
+} from '@torch/core-shared';
 import type { ReactNode } from 'react';
 import { RISK_COLOR, RISK_LABEL, type DomainKey } from './riskTokens';
 import type { ModificationId, WhatIfResult } from '@/lib/whatif-types';
+import {
+  canApplyModificationHeuristic,
+  describeModificationDiff,
+  modificationHint,
+} from '@/lib/whatif-helpers';
 
 type Props = {
   domain: DomainKey;
+  inputs: ProcessInputs;
   results: PartialAssessmentResult;
   activeModifications: Set<ModificationId>;
   onToggleModification: (id: ModificationId) => void;
+  oxygenLevel: number | undefined;
+  onSetOxygenLevel: (v: number | undefined) => void;
+  feedFrequency: FeedingFrequency | undefined;
+  onSetFeedFrequency: (v: FeedingFrequency | undefined) => void;
+  onClearAll: () => void;
   whatIfResult: WhatIfResult | null;
   whatIfLoading: boolean;
 };
-
-// Maps the four what-if buttons rendered on every domain panel to engine
-// modification IDs. Order here is the order they render in the grid.
-const WHATIF_BUTTONS: { id: ModificationId; label: string; muted?: boolean }[] = [
-  { id: 'increase_impeller_rpm',        label: 'Increase impeller RPM' },
-  { id: 'increase_aeration_rate',       label: 'Increase aeration rate' },
-  { id: 'increase_oxygen_saturation',   label: 'Increase oxygen saturation' },
-  { id: 'switch_to_rushton_impeller',   label: 'Switch to Rushton impeller' },
-];
-
-function whatIfValueFor(d: DomainKey, w: WhatIfResult): { value: string; score: RiskScore } {
-  switch (d) {
-    case 'otr':
-      return {
-        value: fmtWithStd(w.otr.otr_our_ratio, w.otr.otr_our_ratio_std, 1),
-        score: w.otr.score,
-      };
-    case 'mixing':
-      return {
-        value: fmtWithStd(w.mixing.process_mixing_ratio, w.mixing.process_mixing_ratio_std, 1),
-        score: w.mixing.score,
-      };
-    case 'shear':
-      return {
-        value: fmtWithStd(w.shear.tip_speed_margin, w.shear.tip_speed_margin_std, 1),
-        score: w.shear.score,
-      };
-    case 'co2':
-      return {
-        value: fmtWithStd(w.co2.pco2_margin, w.co2.pco2_margin_std, 1),
-        score: w.co2.score,
-      };
-    case 'heat':
-      return {
-        value: fmtWithStd(w.heat.heat_transfer_margin, w.heat.heat_transfer_margin_std, 1),
-        score: w.heat.score,
-      };
-  }
-}
 
 type DetailSpec = {
   question: string;
@@ -210,16 +200,98 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
   }
 }
 
+// Domain → (margin value, score) extractor for the "With modifications"
+// column. Mirrors the metric shown in the lab/target columns above.
+function whatIfValueFor(d: DomainKey, w: WhatIfResult): { value: string; score: RiskScore; secondary?: string } {
+  switch (d) {
+    case 'otr':
+      return {
+        value: fmtWithStd(w.otr.otr_our_ratio, w.otr.otr_our_ratio_std, 1),
+        score: w.otr.score,
+        secondary: `kLa ≈ ${fmt(w.otr.kla_h, 0)} h⁻¹ · OTR ${fmt(w.otr.otr_capacity, 1)} mmol/L/h · P/V ${fmt(w.otr.pv_w_m3, 0)} W/m³`,
+      };
+    case 'mixing':
+      return {
+        value: fmtWithStd(w.mixing.process_mixing_ratio, w.mixing.process_mixing_ratio_std, 1),
+        score: w.mixing.score,
+        secondary: `Mixing time ${fmtWithStd(w.mixing.theta_mix, w.mixing.theta_mix_std, 1)} s`,
+      };
+    case 'shear':
+      return {
+        value: fmtWithStd(w.shear.tip_speed_margin, w.shear.tip_speed_margin_std, 1),
+        score: w.shear.score,
+        secondary: `Tip speed ${fmt(w.shear.tip_speed, 2)} m/s`,
+      };
+    case 'co2':
+      return {
+        value: fmtWithStd(w.co2.pco2_margin, w.co2.pco2_margin_std, 1),
+        score: w.co2.score,
+        secondary: `pCO₂ bottom ${fmt(w.co2.pco2_bottom, 3)} bar`,
+      };
+    case 'heat':
+      return {
+        value: fmtWithStd(w.heat.heat_transfer_margin, w.heat.heat_transfer_margin_std, 1),
+        score: w.heat.score,
+        secondary: `Cooling ${fmt(w.heat.q_cool_max, 2)} kW`,
+      };
+  }
+}
+
+const DOMAIN_LABEL_FULL: Record<DomainKey, string> = {
+  otr:    'Oxygen transfer',
+  mixing: 'Mixing',
+  shear:  'Shear stress',
+  co2:    'CO₂ accumulation',
+  heat:   'Heat removal',
+};
+
 export function DomainDetail({
   domain,
+  inputs,
   results,
   activeModifications,
   onToggleModification,
+  oxygenLevel,
+  onSetOxygenLevel,
+  feedFrequency,
+  onSetFeedFrequency,
+  onClearAll,
   whatIfResult,
   whatIfLoading,
 }: Props) {
   const spec = specFor(domain, results);
   const whatIf = whatIfResult ? whatIfValueFor(domain, whatIfResult) : null;
+  const reactorConfigs = results.reactor_configs;
+
+  // Filter the catalog to mods that affect THIS domain.
+  // `increase_oxygen_saturation` is excluded — it's catalogued but the engine
+  // doesn't have a branch for it in `applyModifications`. Oxygen saturation
+  // is driven by the Inlet O₂ stepper (params.oxygen_level), so the button
+  // would be a no-op duplicate.
+  const buttons = MODIFICATION_CATALOG.filter(
+    (m) => m.domains.includes(domain) && m.id !== 'increase_oxygen_saturation',
+  );
+  const operational = buttons.filter((m) => m.section === 'operational');
+  // Design section temporarily hidden — per UX review. Re-enable by removing
+  // the `false &&` filter when those buttons are ready.
+  const design = false ? buttons.filter((m) => m.section === 'design') : [];
+
+  // The oxygen and feed-frequency steppers are continuous knobs — show them
+  // on the panels whose domains they affect (per the catalog).
+  const showOxygenStepper =
+    MODIFICATION_CATALOG.find((m) => m.id === 'increase_oxygen_saturation')?.domains.includes(domain) ?? false;
+  const showFeedStepper =
+    inputs.process_type === 'fed_batch' &&
+    (MODIFICATION_CATALOG.find((m) => m.id === 'reduce_feeding_frequency')?.domains.includes(domain) ?? false);
+
+  const anyModActive = activeModifications.size > 0 || oxygenLevel !== undefined || feedFrequency !== undefined;
+  const diff = whatIfResult ? describeModificationDiff(inputs, whatIfResult.modified_inputs) : [];
+  const whatIfOnlyFlags: AssessmentFlag[] = whatIfResult
+    ? whatIfResult.flags.filter(
+        (f) => !results.flags.some((rf) => rf.message === f.message),
+      )
+    : [];
+
   return (
     <section
       className="mt-4 rounded-lg border p-6 shadow-[0_12px_30px_-26px_rgba(0,0,0,0.35)]"
@@ -264,75 +336,256 @@ export function DomainDetail({
         </div>
       </div>
 
-      <div className={`mt-5 grid grid-cols-1 gap-3 ${activeModifications.size > 0 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-        <ScoreColumn title="Lab scale"    value={spec.lab.value}    score={spec.lab.score} />
-        <ScoreColumn title="Target scale" value={spec.target.value} score={spec.target.score} />
-        {activeModifications.size > 0 ? (
-          <ScoreColumn
-            title="With modifications"
-            value={whatIf?.value ?? (whatIfLoading ? '…' : '—')}
-            score={whatIf?.score ?? 'low'}
-            dimmed={!whatIf}
-          />
-        ) : null}
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <ScoreColumn title="Lab scale" value={spec.lab.value} score={spec.lab.score} />
+        <ScoreColumn
+          title="Target scale"
+          value={spec.target.value}
+          score={spec.target.score}
+          modifiedValue={anyModActive ? (whatIf?.value ?? (whatIfLoading ? '…' : '—')) : undefined}
+          modifiedScore={whatIf?.score}
+        />
       </div>
 
+      {/* What-if controls */}
       <div
         className="mt-5 rounded-lg border p-4"
         style={{ borderColor: 'var(--color-rule)', background: 'var(--color-paper-50)' }}
       >
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-ink-400)' }}>
-          Target Scale What-If Analysis
-        </p>
-        <p className="mt-1 text-[12px]" style={{ color: 'var(--color-ink-500)' }}>
-          Make modifications to your target scale reactor and see live changes in risk
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {WHATIF_BUTTONS.map((b) => (
-            <WhatIfButton
-              key={b.id}
-              label={b.label}
-              active={activeModifications.has(b.id)}
-              onClick={() => onToggleModification(b.id)}
-            />
-          ))}
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-ink-400)' }}>
+              Target Scale What-If Analysis
+            </p>
+            <p className="mt-1 text-[12px]" style={{ color: 'var(--color-ink-500)' }}>
+              Apply modifications and see live changes to {DOMAIN_LABEL_FULL[domain]} (and every other domain).
+            </p>
+          </div>
+          {anyModActive ? (
+            <button
+              type="button"
+              onClick={onClearAll}
+              className="rounded-md border px-2 py-1 text-[11px] font-medium transition-colors"
+              style={{
+                borderColor: 'var(--color-rule)',
+                background: 'var(--color-paper-100)',
+                color: 'var(--color-ink-700)',
+              }}
+            >
+              Clear all
+            </button>
+          ) : null}
         </div>
+
+        {operational.length > 0 ? (
+          <SectionLabel>Operational</SectionLabel>
+        ) : null}
+        {operational.length > 0 ? (
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {operational.map((m) => (
+              <WhatIfButton
+                key={m.id}
+                label={m.label}
+                hint={modificationHint(m.id, inputs, reactorConfigs)}
+                active={activeModifications.has(m.id)}
+                disabled={!canApplyModificationHeuristic(m.id, inputs, reactorConfigs)}
+                onClick={() => onToggleModification(m.id)}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {showOxygenStepper ? (() => {
+          const baseline = inputs.o2_inlet ?? 20.9;
+          const current = oxygenLevel ?? baseline;
+          const levels = oxygenLevelsFromBaseline(baseline);
+          return (
+            <Stepper
+              label="Inlet O₂"
+              baselineText={`Baseline ${baseline.toFixed(1)}%`}
+              currentText={`${current.toFixed(1)}%`}
+              modified={oxygenLevel !== undefined}
+              disableLeft={current <= levels[0] + 1e-9}
+              disableRight={current >= levels[levels.length - 1] - 1e-9}
+              onLeft={() => {
+                const next = stepOxygenLevel(current, baseline, 'left');
+                onSetOxygenLevel(Math.abs(next - baseline) < 1e-9 ? undefined : next);
+              }}
+              onRight={() => {
+                const next = stepOxygenLevel(current, baseline, 'right');
+                onSetOxygenLevel(Math.abs(next - baseline) < 1e-9 ? undefined : next);
+              }}
+            />
+          );
+        })() : null}
+
+        {showFeedStepper ? (() => {
+          const baseline = inputs.feeding_frequency ?? 'continuous';
+          const current = feedFrequency ?? baseline;
+          return (
+            <Stepper
+              label="Feeding frequency"
+              baselineText={`Baseline ${FEEDING_FREQUENCY_LABELS[baseline]}`}
+              currentText={FEEDING_FREQUENCY_LABELS[current]}
+              modified={feedFrequency !== undefined}
+              disableLeft={current === '30plus_min'}
+              disableRight={current === 'continuous'}
+              hint="◀ less frequent · ▶ more frequent"
+              onLeft={() => {
+                const next = stepFeedFrequency(current, 'left');
+                onSetFeedFrequency(next === baseline ? undefined : next);
+              }}
+              onRight={() => {
+                const next = stepFeedFrequency(current, 'right');
+                onSetFeedFrequency(next === baseline ? undefined : next);
+              }}
+            />
+          );
+        })() : null}
+
+        {design.length > 0 ? (
+          <SectionLabel className="mt-4">Design</SectionLabel>
+        ) : null}
+        {design.length > 0 ? (
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {design.map((m) => (
+              <WhatIfButton
+                key={m.id}
+                label={m.label}
+                hint={modificationHint(m.id, inputs, reactorConfigs)}
+                active={activeModifications.has(m.id)}
+                disabled={!canApplyModificationHeuristic(m.id, inputs, reactorConfigs)}
+                onClick={() => onToggleModification(m.id)}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {buttons.length === 0 && !showOxygenStepper && !showFeedStepper ? (
+          <p className="text-[12px]" style={{ color: 'var(--color-ink-400)' }}>
+            No modifications available for this domain.
+          </p>
+        ) : null}
       </div>
+
+      {/* Modifications applied summary */}
+      {anyModActive ? (
+        <div
+          className="mt-3 rounded-lg border p-4"
+          style={{ borderColor: 'var(--color-rule)', background: 'var(--color-paper-50)' }}
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-ink-400)' }}>
+            Changes Applied
+          </p>
+          {whatIfLoading && diff.length === 0 ? (
+            <p className="mt-2 text-[12px]" style={{ color: 'var(--color-ink-400)' }}>Computing…</p>
+          ) : diff.length === 0 ? (
+            <p className="mt-2 text-[12px]" style={{ color: 'var(--color-ink-400)' }}>
+              The selected modification didn't change any input field at this scale.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-[12px]">
+              {diff.map((d) => (
+                <li key={d.label} style={{ color: 'var(--color-ink-700)' }}>
+                  <span style={{ color: 'var(--color-ink-500)' }}>{d.label}:</span>{' '}
+                  <span className="font-mono" style={{ color: 'var(--color-ink-500)' }}>{d.from}</span>
+                  <span style={{ color: 'var(--color-ink-400)' }}> → </span>
+                  <span className="font-mono" style={{ color: 'var(--color-ink-900)' }}>{d.to}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {whatIfResult?.primary_bottleneck && whatIfResult.primary_bottleneck.domain !== results.primary_bottleneck.domain ? (
+            <p className="mt-3 text-[12px]" style={{ color: 'var(--color-ink-700)' }}>
+              <span className="font-semibold">Primary bottleneck shifted:</span>{' '}
+              <span style={{ color: 'var(--color-ink-500)' }}>
+                {results.primary_bottleneck.domain ? DOMAIN_LABEL_FULL[results.primary_bottleneck.domain as DomainKey] : 'none'}
+              </span>
+              {' → '}
+              <span className="font-semibold" style={{ color: 'var(--color-flame-500)' }}>
+                {whatIfResult.primary_bottleneck.domain ? DOMAIN_LABEL_FULL[whatIfResult.primary_bottleneck.domain as DomainKey] : 'none'}
+              </span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* New flags introduced by the modifications */}
+      {whatIfOnlyFlags.length > 0 ? (
+        <div
+          className="mt-3 rounded-lg border p-4"
+          style={{ borderColor: '#f0c674', background: '#fff4e5' }}
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: '#8a6d3b' }}>
+            Warnings triggered by modifications
+          </p>
+          <ul className="mt-2 space-y-1 text-[12px]" style={{ color: '#574016' }}>
+            {whatIfOnlyFlags.map((f, i) => (
+              <li key={i}>{f.message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }
 
+function SectionLabel({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return (
+    <p
+      className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${className}`}
+      style={{ color: 'var(--color-ink-500)' }}
+    >
+      {children}
+    </p>
+  );
+}
+
 function ScoreColumn({
-  title, value, score, dimmed = false,
-}: { title: string; value: string; score: RiskScore; dimmed?: boolean }) {
-  const c = RISK_COLOR[score];
+  title, value, score, modifiedValue, modifiedScore,
+}: {
+  title: string;
+  value: string;
+  score: RiskScore;
+  modifiedValue?: string;       // when present, renders "value → modifiedValue"
+  modifiedScore?: RiskScore;    // badge switches to this when modifiedValue is set
+}) {
+  const showModified = modifiedValue !== undefined;
+  const badgeScore = showModified && modifiedScore ? modifiedScore : score;
+  const c = RISK_COLOR[badgeScore];
   return (
     <div
       className="rounded-lg border p-4"
       style={{
         borderColor: 'var(--color-rule)',
         background: 'var(--color-paper-50)',
-        opacity: dimmed ? 0.5 : 1,
       }}
     >
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-ink-400)' }}>
           {title}
         </p>
-        {dimmed ? null : (
-          <span
-            className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
-            style={{ background: c.bg, color: c.fg }}
-          >
-            {RISK_LABEL[score]}
-          </span>
-        )}
+        <span
+          className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
+          style={{ background: c.bg, color: c.fg }}
+        >
+          {RISK_LABEL[badgeScore]}
+        </span>
       </div>
       <p
-        className="mt-3 text-[28px] font-semibold tabular-nums tracking-[-0.02em]"
+        className="mt-3 flex items-center gap-x-3 text-[28px] font-semibold tabular-nums tracking-[-0.02em]"
         style={{ color: 'var(--color-ink-900)' }}
       >
-        {value}
+        <span style={{ color: showModified ? 'var(--color-ink-400)' : 'var(--color-ink-900)' }}>
+          {value}
+        </span>
+        {showModified ? (
+          <>
+            <span aria-hidden style={{ color: 'var(--color-ink-400)', fontSize: '22px' }}>→</span>
+            <span style={{ color: 'var(--color-flame-500)' }}>{modifiedValue}</span>
+          </>
+        ) : null}
       </p>
     </div>
   );
@@ -340,28 +593,137 @@ function ScoreColumn({
 
 function WhatIfButton({
   label,
+  hint,
   active = false,
+  disabled = false,
   onClick,
 }: {
   label: string;
+  hint?: string;
   active?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={active}
-      className="rounded-lg border px-4 py-3 text-left text-[12px] font-medium transition-[border-color,background-color,color,box-shadow]"
+      title={disabled ? 'Not applicable at the current operating point' : undefined}
+      className="flex flex-col gap-0.5 rounded-lg border px-4 py-3 text-left transition-[border-color,background-color,color,box-shadow,opacity]"
       style={{
         borderColor: active ? 'var(--color-flame-500)' : 'var(--color-rule)',
-        background: active ? 'rgba(255, 90, 31, 0.08)' : 'var(--color-paper-50)',
-        color: active ? 'var(--color-ink-900)' : 'var(--color-ink-700)',
+        background: active ? 'rgba(255, 90, 31, 0.08)' : 'var(--color-paper-100)',
         boxShadow: active ? '0 0 0 1px var(--color-flame-500) inset' : 'none',
-        cursor: 'pointer',
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
       }}
     >
-      {label}
+      <span
+        className="text-[12px] font-medium"
+        style={{
+          color: disabled
+            ? 'var(--color-ink-400)'
+            : active
+              ? 'var(--color-ink-900)'
+              : 'var(--color-ink-700)',
+        }}
+      >
+        {label}
+      </span>
+      {hint && !disabled ? (
+        <span
+          className="text-[11px] font-mono tabular-nums"
+          style={{
+            color: active ? 'var(--color-flame-500)' : 'var(--color-ink-400)',
+          }}
+        >
+          {hint}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function Stepper({
+  label,
+  baselineText,
+  currentText,
+  modified,
+  onLeft,
+  onRight,
+  disableLeft = false,
+  disableRight = false,
+  hint,
+}: {
+  label: string;
+  baselineText: string;   // "Baseline 20.9%"
+  currentText: string;    // "80.0%"
+  modified: boolean;
+  onLeft: () => void;
+  onRight: () => void;
+  disableLeft?: boolean;
+  disableRight?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div
+      className="mt-2 flex items-center justify-between gap-4 rounded-lg border px-4 py-3"
+      style={{
+        borderColor: modified ? 'var(--color-flame-500)' : 'var(--color-rule)',
+        background: 'var(--color-paper-100)',
+        boxShadow: modified ? '0 0 0 1px var(--color-flame-500) inset' : 'none',
+      }}
+    >
+      <div className="flex min-w-0 flex-col">
+        <span
+          className="text-[11px] font-semibold uppercase tracking-[0.1em]"
+          style={{ color: 'var(--color-ink-700)' }}
+        >
+          {label}
+        </span>
+        <span className="mt-0.5 truncate text-[11px]" style={{ color: 'var(--color-ink-400)' }}>
+          {baselineText}
+          {hint ? <> · {hint}</> : null}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <StepperButton onClick={onLeft} disabled={disableLeft} aria-label="Previous">◀</StepperButton>
+        <span
+          className="min-w-[9ch] text-center text-[15px] font-semibold tabular-nums"
+          style={{
+            color: modified ? 'var(--color-flame-500)' : 'var(--color-ink-900)',
+          }}
+        >
+          {currentText}
+        </span>
+        <StepperButton onClick={onRight} disabled={disableRight} aria-label="Next">▶</StepperButton>
+      </div>
+    </div>
+  );
+}
+
+function StepperButton({
+  children, onClick, disabled, ...rest
+}: { children: ReactNode; onClick: () => void; disabled: boolean } & Record<string, unknown>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      {...rest}
+      className="grid h-8 w-8 place-items-center rounded-md border text-[12px] font-semibold transition-[opacity,background-color,border-color,color]"
+      style={{
+        borderColor: 'var(--color-ink-300, var(--color-rule))',
+        background: disabled ? 'var(--color-paper-100)' : 'var(--color-paper-50)',
+        color: disabled ? 'var(--color-ink-300)' : 'var(--color-ink-800)',
+        opacity: disabled ? 0.45 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {children}
     </button>
   );
 }

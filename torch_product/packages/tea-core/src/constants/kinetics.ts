@@ -4,9 +4,16 @@
 
 import type { OrganismSpecies, FeedingFrequency } from "../types";
 
-// Re-export the public OD→CDW pieces so existing engine code that imports
-// from "../constants/kinetics" or "../constants" keeps working unchanged.
-export { OD_TO_CDW_G_L, getOdToCdwFactor } from "@torch/core-shared";
+// Re-export the public OD→CDW pieces and the feeding-frequency catalog
+// (labels + ordering) so existing engine code that imports from
+// "../constants/kinetics" or "../constants" keeps working unchanged. These
+// canonical defs live in @torch/core-shared.
+export {
+  OD_TO_CDW_G_L,
+  getOdToCdwFactor,
+  FEEDING_FREQUENCY_LABELS,
+  FEEDING_FREQUENCY_ORDER,
+} from "@torch/core-shared";
 
 export interface OurPeakBounds {
   lower: number; // mmol/L/h — OUR at BIOMASS_INTERPOLATION_MIN_G_L
@@ -49,18 +56,6 @@ export const FEEDING_FREQUENCY_SECONDS: Record<FeedingFrequency, number> = {
   "10_30min":    900,
   "30plus_min": 2400,
 };
-
-export const FEEDING_FREQUENCY_LABELS: Record<FeedingFrequency, string> = {
-  continuous:    "Continuous",
-  "1_10min":     "Every 1–10 min",
-  "10_30min":    "Every 10–30 min",
-  "30plus_min":  "> 30 min",
-};
-
-// Ordered most-frequent → least-frequent; used for cycling arrows (◀ = less frequent).
-export const FEEDING_FREQUENCY_ORDER: FeedingFrequency[] = [
-  "continuous", "1_10min", "10_30min", "30plus_min",
-];
 
 // --- ARCHIVED: Monod kinetic parameters --- not used in any active calculation ---
 // export const KINETIC_PARAMS: Record<OrganismSpecies, KineticParameters> = { ... };
