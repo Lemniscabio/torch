@@ -1,4 +1,12 @@
+// Private kinetic constants — backend-only. The public OD→CDW conversion
+// lives in @torch/core-shared (so the form UI can use it without pulling in
+// any engine math).
+
 import type { OrganismSpecies, FeedingFrequency } from "../types";
+
+// Re-export the public OD→CDW pieces so existing engine code that imports
+// from "../constants/kinetics" or "../constants" keeps working unchanged.
+export { OD_TO_CDW_G_L, getOdToCdwFactor } from "@torch/core-shared";
 
 export interface OurPeakBounds {
   lower: number; // mmol/L/h — OUR at BIOMASS_INTERPOLATION_MIN_G_L
@@ -11,20 +19,6 @@ export const BIOMASS_INTERPOLATION_MAX_G_L = 150;  // g/L CDW — upper anchor (
 
 // Threshold above which non-Newtonian viscosity treatment is applied
 export const HIGH_DENSITY_BIOMASS_G_L = 60;        // g/L CDW
-
-// OD₆₀₀ → CDW conversion factors (g/L CDW per OD unit)
-export const OD_TO_CDW_G_L: Record<OrganismSpecies, number> = {
-  e_coli:         0.43,
-  s_cerevisiae:   0.38,
-  p_pastoris:     0.36,
-  b_subtilis:     0.42,
-  other_bacteria: 0.43,
-  other_yeast:    0.38,
-};
-
-export function getOdToCdwFactor(species: OrganismSpecies): number {
-  return OD_TO_CDW_G_L[species] ?? 0.43;
-}
 
 export const OUR_PEAK_BOUNDS: Partial<Record<OrganismSpecies, OurPeakBounds>> = {
   e_coli:         { lower: 12, upper: 150 },

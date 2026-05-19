@@ -3,7 +3,7 @@
 // 15/40/70/95 of-100 anchors the old dashboard used for the radar polygon
 // (low = small/inner, critical = large/outer).
 
-import type { RiskScore } from '@torch/core';
+import type { RiskScore } from '@torch/core-shared';
 
 export const RISK_LABEL: Record<RiskScore, string> = {
   low: 'Low',

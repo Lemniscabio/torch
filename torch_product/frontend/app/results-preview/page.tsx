@@ -7,7 +7,7 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { ResultsDashboard } from '@/components/results/ResultsDashboard';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { useAuth } from '@/lib/auth-context';
-import type { PartialAssessmentResult, ProcessInputs } from '@torch/core';
+import type { PartialAssessmentResult, ProcessInputs } from '@torch/core-shared';
 
 type Snapshot = {
   inputs: ProcessInputs;

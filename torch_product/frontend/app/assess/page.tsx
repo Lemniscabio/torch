@@ -9,7 +9,7 @@ import { Suspense, useCallback, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFormContext } from 'react-hook-form';
-import { runAssessment } from '@torch/core';
+import type { PartialAssessmentResult } from '@torch/core-shared';
 import { toProcessInputs } from '@/lib/assess-to-inputs';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
@@ -205,7 +205,26 @@ function StepActions({ slug }: { slug: StepSlug }) {
       }
       const values = getValues();
       const inputs = toProcessInputs(values);
-      const results = runAssessment(inputs);
+
+      // Engine runs server-side. Auth users hit /save (computes + persists +
+      // returns results); unauth users hit /preview (computes only).
+      let results: PartialAssessmentResult;
+      let savedId: string | null = null;
+
+      if (auth.status === 'authed') {
+        const saved = await api<{ id: string | null; results: PartialAssessmentResult }>(
+          '/api/assessments/save',
+          { method: 'POST', body: JSON.stringify({ inputs }) },
+        );
+        results = saved.results;
+        savedId = saved.id;
+      } else {
+        const preview = await api<{ results: PartialAssessmentResult }>(
+          '/api/assessments/preview',
+          { method: 'POST', body: JSON.stringify({ inputs }), authed: false },
+        );
+        results = preview.results;
+      }
 
       if (typeof window !== 'undefined') {
         window.sessionStorage.setItem(
@@ -216,21 +235,7 @@ function StepActions({ slug }: { slug: StepSlug }) {
       clearDraft();
 
       setAnalyzing(true);
-      savedIdRef.current = null;
-
-      if (auth.status === 'authed') {
-        api<{ id: string | null }>('/api/assessments/save', {
-          method: 'POST',
-          body: JSON.stringify({ inputs, results }),
-        })
-          .then((saved) => {
-            savedIdRef.current = saved.id;
-          })
-          .catch(() => {
-            // eslint-disable-next-line no-console
-            console.warn('Assessment save failed; using local snapshot.');
-          });
-      }
+      savedIdRef.current = savedId;
     } catch (err) {
       const e = err as ApiError;
       setSubmitError(e.error || 'Could not run assessment.');

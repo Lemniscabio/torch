@@ -6,7 +6,7 @@
 
 import { useEffect } from 'react';
 import { useFormContext } from 'react-hook-form';
-import { INPUT_DEFAULTS } from '@torch/core';
+import { INPUT_DEFAULTS } from '@torch/core-shared';
 import { Field } from '@/components/ui/Field';
 import type { AssessFormValues } from '@/lib/assess-schema';
 

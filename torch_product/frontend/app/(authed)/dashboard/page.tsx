@@ -12,7 +12,7 @@ import { api, type ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { speciesLabel, worstScore, relativeTime } from '@/lib/format';
 import { DOMAIN_ORDER, RISK_COLOR, type DomainKey } from '@/components/results/riskTokens';
-import type { ProcessInputs, PartialAssessmentResult, RiskScore } from '@torch/core';
+import type { ProcessInputs, PartialAssessmentResult, RiskScore } from '@torch/core-shared';
 
 type AssessmentRow = {
   id: string;

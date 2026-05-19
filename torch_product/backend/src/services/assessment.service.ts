@@ -1,4 +1,12 @@
 import { prisma } from "../config/db";
+import { runAssessment, type ProcessInputs } from "@torch/core";
+
+// Compute results server-side. Single source of truth for assessment math —
+// the frontend no longer ships engine code, so the only valid place this
+// computation can happen is here.
+export function computeAssessment(inputs: ProcessInputs) {
+  return runAssessment(inputs);
+}
 
 export async function getAssessments(email: string) {
   const assessments = await prisma.assessment.findMany({
@@ -38,7 +46,7 @@ export async function getAssessmentById(id: string, email: string) {
   return assessment;
 }
 
-export async function saveAssessment(email: string, inputs: unknown, results: unknown) {
+export async function saveAssessment(email: string, inputs: ProcessInputs) {
   const normalisedEmail = email.toLowerCase();
 
   const user = await prisma.user.findUnique({
@@ -49,6 +57,9 @@ export async function saveAssessment(email: string, inputs: unknown, results: un
     throw { status: 401, message: "User not found" };
   }
 
+  // Compute results server-side — never trust a client-supplied result blob.
+  const results = computeAssessment(inputs);
+
   const assessment = await prisma.assessment.create({
     data: {
       user_email: normalisedEmail,
@@ -57,7 +68,7 @@ export async function saveAssessment(email: string, inputs: unknown, results: un
     },
   });
 
-  return { id: assessment.id };
+  return { id: assessment.id, results };
 }
 
 export async function deleteAssessment(id: string, email: string) {

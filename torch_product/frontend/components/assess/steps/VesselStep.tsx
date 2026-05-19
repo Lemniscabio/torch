@@ -11,7 +11,7 @@ import {
   getScaleupOperatingRange,
   maxImpellersForGeometry,
   type ImpellerType,
-} from '@torch/core';
+} from '@torch/core-shared';
 import { Field } from '@/components/ui/Field';
 import { NumberInput } from '@/components/ui/NumberInput';
 import type { AssessFormValues } from '@/lib/assess-schema';

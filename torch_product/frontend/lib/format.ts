@@ -1,6 +1,6 @@
 // Tiny display helpers shared across results + dashboard.
 
-import type { OrganismSpecies, PartialAssessmentResult, RiskScore } from '@torch/core';
+import type { OrganismSpecies, PartialAssessmentResult, RiskScore } from '@torch/core-shared';
 
 const SPECIES_LABELS: Record<OrganismSpecies, string> = {
   e_coli:           'E. coli',

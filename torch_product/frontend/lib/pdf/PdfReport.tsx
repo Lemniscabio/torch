@@ -18,7 +18,7 @@ import type {
   PartialAssessmentResult,
   RiskScore,
   Confidence,
-} from '@torch/core';
+} from '@torch/core-shared';
 import { speciesLabel } from '../format';
 
 const NAVY  = '#1B3A5C';

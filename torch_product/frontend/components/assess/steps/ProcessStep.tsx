@@ -7,7 +7,7 @@
 // temperature and cooling-water inlet.
 
 import { useFormContext } from 'react-hook-form';
-import { getOdToCdwFactor } from '@torch/core';
+import { getOdToCdwFactor } from '@torch/core-shared';
 import { Field } from '@/components/ui/Field';
 import { NumberInput } from '@/components/ui/NumberInput';
 import type { AssessFormValues } from '@/lib/assess-schema';

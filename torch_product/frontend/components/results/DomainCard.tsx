@@ -4,7 +4,7 @@
 // label + headline metric + risk badge. Clicking selects it; the parent
 // renders DomainDetail for the selected card below the row.
 
-import type { RiskScore } from '@torch/core';
+import type { RiskScore } from '@torch/core-shared';
 import { RISK_COLOR, RISK_LABEL, type DomainKey } from './riskTokens';
 
 type Props = {

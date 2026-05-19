@@ -37,6 +37,7 @@ exports.getAssessments = getAssessments;
 exports.getAssessmentById = getAssessmentById;
 exports.deleteAssessment = deleteAssessment;
 exports.saveAssessment = saveAssessment;
+exports.previewAssessment = previewAssessment;
 const assessmentService = __importStar(require("../services/assessment.service"));
 async function getAssessments(req, res) {
     try {
@@ -84,17 +85,32 @@ async function deleteAssessment(req, res) {
 async function saveAssessment(req, res) {
     try {
         const email = req.user.email;
-        const { inputs, results } = req.body;
-        if (!inputs || !results) {
-            res.status(400).json({ error: "Missing fields" });
+        const { inputs } = req.body;
+        if (!inputs) {
+            res.status(400).json({ error: "Missing inputs" });
             return;
         }
-        const result = await assessmentService.saveAssessment(email, inputs, results);
+        const result = await assessmentService.saveAssessment(email, inputs);
         res.json(result);
     }
     catch (error) {
         console.error("Failed to save assessment (non-blocking):", error);
         res.json({ id: null });
+    }
+}
+async function previewAssessment(req, res) {
+    try {
+        const { inputs } = req.body;
+        if (!inputs) {
+            res.status(400).json({ error: "Missing inputs" });
+            return;
+        }
+        const results = assessmentService.computeAssessment(inputs);
+        res.json({ results });
+    }
+    catch (error) {
+        console.error("Preview compute failed:", error);
+        res.status(400).json({ error: error?.message || "Could not run assessment." });
     }
 }
 //# sourceMappingURL=assessment.controller.js.map

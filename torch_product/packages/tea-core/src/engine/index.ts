@@ -2,14 +2,8 @@
 
 import type {
   ProcessInputs,
-  DerivedParameters,
-  AssessmentFlag,
   GrowthOxygenRiskResult,
-  OtrRiskResult,
-  MixingRiskResult,
-  ShearRiskResult,
-  Co2RiskResult,
-  HeatRiskResult,
+  PartialAssessmentResult,
   PrimaryBottleneck,
   RiskDomain,
   RiskScore,
@@ -40,11 +34,12 @@ export type {
   PowerResult,
   ReynoldsResult,
   FlowRegime,
-  GasVelocityResult,
-  OxygenSolubilityResult,
   deriveOxygenSolubility,
   DerivationOutput,
 } from "./derivations/index";
+// GasVelocityResult, OxygenSolubilityResult — canonical defs now live in
+// @torch/core-shared (see ../types). Don't re-export here or `export *`
+// from "@torch/core" hits a name collision.
 
 export { calculateOtrRisk }    from "./oxygen/otr_risk";
 // Legacy growth-kinetics oxygen risk path archived from active assessment flow.
@@ -58,30 +53,14 @@ export {
   scaleUpByShear,
 } from "./scaleup/criteria";
 export { buildReactorScaleConfigs } from "./reactor_configs";
-export type {
-  ReactorScaleConfig,
-  ReactorScaleConfigOptions,
-  ReactorScaleConfigs,
-} from "./reactor_configs";
-export type {
-  ScaleupCriterion,
-  ScaleupCriteriaInput,
-  ScaleupCriteriaResult,
-} from "./scaleup/criteria";
+// ReactorScaleConfig{,Options,s}, ScaleupCriterion, ScaleupCriteriaInput,
+// ScaleupCriteriaResult — canonical defs live in @torch/core-shared.
 
-// --- Full assessment result ---
-
-export interface PartialAssessmentResult {
-  growth_oxygen:      GrowthOxygenRiskResult;
-  otr:                OtrRiskResult;
-  mixing:             MixingRiskResult;
-  shear:              ShearRiskResult;
-  co2:                Co2RiskResult;
-  heat:               HeatRiskResult;
-  primary_bottleneck: PrimaryBottleneck;
-  flags:              AssessmentFlag[];
-  derived:            DerivedParameters;
-}
+// PartialAssessmentResult is now defined in @torch/core-shared so the
+// frontend can type API responses without pulling in any engine code.
+// Re-exported here so existing consumers that `from "@torch/core"` keep
+// working.
+export type { PartialAssessmentResult } from "../types";
 
 // --- Risk score ordering ---
 
@@ -236,6 +215,7 @@ export function runAssessment(inputs: ProcessInputs): PartialAssessmentResult {
     primary_bottleneck: null as unknown as PrimaryBottleneck,
     flags,
     derived,
+    reactor_configs:    reactorConfigs,
   };
 
   partialResult.primary_bottleneck = determinePrimaryBottleneck(partialResult);

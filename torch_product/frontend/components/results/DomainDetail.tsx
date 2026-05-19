@@ -4,7 +4,7 @@
 // old's DetailScaffold (old:656-728): plain-language question + fraction
 // notation + threshold band reference + lab/target score columns.
 
-import type { PartialAssessmentResult, RiskScore } from '@torch/core';
+import type { PartialAssessmentResult, RiskScore } from '@torch/core-shared';
 import type { ReactNode } from 'react';
 import { RISK_COLOR, RISK_LABEL, type DomainKey } from './riskTokens';
 

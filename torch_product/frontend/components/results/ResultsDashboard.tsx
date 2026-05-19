@@ -7,12 +7,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import {
-  buildReactorScaleConfigs,
-  type PartialAssessmentResult,
-  type ProcessInputs,
-  type RiskScore,
-} from '@torch/core';
+import type {
+  PartialAssessmentResult,
+  ProcessInputs,
+  RiskScore,
+} from '@torch/core-shared';
 import { Radar } from './Radar';
 import { DomainCard } from './DomainCard';
 import { DomainDetail } from './DomainDetail';
@@ -85,9 +84,7 @@ export function ResultsDashboard({ inputs, results, isExample = false }: Props) 
   const labScores = scoresAt('lab', results);
   const targetScores = scoresAt('target', results);
   const scaleRatio = inputs.v_target / inputs.v_lab;
-  const reactorConfigs = buildReactorScaleConfigs(inputs, {
-    method: inputs.scaleup_criterion ?? 'power_per_volume',
-  });
+  const reactorConfigs = results.reactor_configs;
 
   return (
     <main className="min-h-dvh px-6 py-8" style={{ background: 'var(--color-paper-50)' }}>
@@ -158,9 +155,9 @@ export function ResultsDashboard({ inputs, results, isExample = false }: Props) 
             <p className="mt-2 text-[15px] leading-relaxed" style={{ color: 'var(--color-ink-700)' }}>
               Scale-up performed according to {scaleCriterionLabel(inputs.scaleup_criterion)} criterion.
               Impeller at target scale set to run at{' '}
-              <strong className="font-mono" style={{ color: 'var(--color-ink-900)' }}>{fmt(reactorConfigs.target.rpm, 0)} RPM</strong>{' '}
+              <strong className="font-mono" style={{ color: 'var(--color-ink-900)' }}>{fmt(reactorConfigs?.target.rpm, 0)} RPM</strong>{' '}
               and aeration rate at target scale set to{' '}
-              <strong className="font-mono" style={{ color: 'var(--color-ink-900)' }}>{fmt(reactorConfigs.target.vvm, 2)} vvm</strong>.
+              <strong className="font-mono" style={{ color: 'var(--color-ink-900)' }}>{fmt(reactorConfigs?.target.vvm, 2)} vvm</strong>.
             </p>
           </section>
         </div>

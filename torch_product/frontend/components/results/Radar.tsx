@@ -8,7 +8,7 @@
 // Renders identically in lab and target views — caller passes the score
 // quintuplet and the title.
 
-import type { RiskScore } from '@torch/core';
+import type { RiskScore } from '@torch/core-shared';
 import { DOMAIN_ORDER, RISK_DISTANCE, RISK_COLOR, type DomainKey } from './riskTokens';
 
 type Props = {

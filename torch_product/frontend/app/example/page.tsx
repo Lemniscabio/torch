@@ -5,9 +5,10 @@
 
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { runAssessment, type ProcessInputs } from '@torch/core';
+import type { PartialAssessmentResult, ProcessInputs } from '@torch/core-shared';
+import { api } from '@/lib/api';
 import { ResultsDashboard } from '@/components/results/ResultsDashboard';
 import { Wordmark } from '@/components/ui/Wordmark';
 
@@ -37,7 +38,25 @@ const EXAMPLE_INPUTS: ProcessInputs = {
 };
 
 export default function ExamplePage() {
-  const results = useMemo(() => runAssessment(EXAMPLE_INPUTS), []);
+  const [results, setResults] = useState<PartialAssessmentResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ results: PartialAssessmentResult }>(
+      '/api/assessments/preview',
+      { method: 'POST', body: JSON.stringify({ inputs: EXAMPLE_INPUTS }), authed: false },
+    )
+      .then((data) => {
+        if (!cancelled) setResults(data.results);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err?.error || 'Could not load example.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -62,7 +81,17 @@ export default function ExamplePage() {
         </div>
       </header>
       <div className="flex-1">
-        <ResultsDashboard inputs={EXAMPLE_INPUTS} results={results} isExample />
+        {results ? (
+          <ResultsDashboard inputs={EXAMPLE_INPUTS} results={results} isExample />
+        ) : error ? (
+          <div className="mx-auto max-w-[600px] p-8 text-center text-[14px]" style={{ color: 'var(--color-ink-500)' }}>
+            {error}
+          </div>
+        ) : (
+          <div className="mx-auto max-w-[600px] p-8 text-center text-[14px]" style={{ color: 'var(--color-ink-500)' }}>
+            Loading example…
+          </div>
+        )}
       </div>
     </div>
   );

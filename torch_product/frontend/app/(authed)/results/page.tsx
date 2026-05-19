@@ -10,7 +10,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, type ApiError } from '@/lib/api';
 import { ResultsDashboard } from '@/components/results/ResultsDashboard';
-import type { ProcessInputs, PartialAssessmentResult } from '@torch/core';
+import type { ProcessInputs, PartialAssessmentResult } from '@torch/core-shared';
 
 type Snapshot = {
   inputs: ProcessInputs;

@@ -13,7 +13,7 @@ import {
   PROCESS_INPUT_BOUNDS,
   inferHdFromVolume,
   getScaleupOperatingRange,
-} from '@torch/core';
+} from '@torch/core-shared';
 
 export { inferHdFromVolume };
 

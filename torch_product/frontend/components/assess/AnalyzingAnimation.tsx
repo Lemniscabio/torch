@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import { useFormContext, useWatch } from 'react-hook-form';
-import { INPUT_DEFAULTS, IMPELLER_CONSTANTS, type ImpellerType } from '@torch/core';
+import { INPUT_DEFAULTS, IMPELLER_CONSTANTS, type ImpellerType } from '@torch/core-shared';
 import type { AssessFormValues } from '@/lib/assess-schema';
 import { BioreactorDiagram } from './BioreactorDiagram';
 

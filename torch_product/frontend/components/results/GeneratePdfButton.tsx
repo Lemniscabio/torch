@@ -5,7 +5,7 @@
 // triggers a download via an ephemeral anchor.
 
 import { useState } from 'react';
-import type { ProcessInputs, PartialAssessmentResult } from '@torch/core';
+import type { ProcessInputs, PartialAssessmentResult } from '@torch/core-shared';
 import { speciesLabel } from '@/lib/format';
 
 type Props = {

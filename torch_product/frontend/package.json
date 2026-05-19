@@ -13,7 +13,7 @@
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@react-pdf/renderer": "^4.5.1",
-    "@torch/core": "file:../packages/tea-core",
+    "@torch/core-shared": "file:../packages/tea-core-shared",
     "lucide-react": "^0.460.0",
     "next": "^16.2.6",
     "react": "^19.0.0",

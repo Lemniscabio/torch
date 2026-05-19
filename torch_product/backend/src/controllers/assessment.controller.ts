@@ -47,17 +47,32 @@ export async function deleteAssessment(req: Request, res: Response) {
 export async function saveAssessment(req: Request, res: Response) {
   try {
     const email = req.user!.email;
-    const { inputs, results } = req.body;
+    const { inputs } = req.body;
 
-    if (!inputs || !results) {
-      res.status(400).json({ error: "Missing fields" });
+    if (!inputs) {
+      res.status(400).json({ error: "Missing inputs" });
       return;
     }
 
-    const result = await assessmentService.saveAssessment(email, inputs, results);
+    const result = await assessmentService.saveAssessment(email, inputs);
     res.json(result);
   } catch (error: any) {
     console.error("Failed to save assessment (non-blocking):", error);
     res.json({ id: null });
+  }
+}
+
+export async function previewAssessment(req: Request, res: Response) {
+  try {
+    const { inputs } = req.body;
+    if (!inputs) {
+      res.status(400).json({ error: "Missing inputs" });
+      return;
+    }
+    const results = assessmentService.computeAssessment(inputs);
+    res.json({ results });
+  } catch (error: any) {
+    console.error("Preview compute failed:", error);
+    res.status(400).json({ error: error?.message || "Could not run assessment." });
   }
 }

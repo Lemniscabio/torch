@@ -17,9 +17,11 @@ const nextConfig: NextConfig = {
   // for the URL `/dashboard` without a redirect hop.
   trailingSlash: true,
   images: { unoptimized: true },
-  // @torch/core is a workspace-local TypeScript package; Next must transpile
-  // its source rather than expect a pre-built dist/.
-  transpilePackages: ['@torch/core'],
+  // @torch/core-shared is a workspace-local TypeScript package; Next must
+  // transpile its source rather than expect a pre-built dist/. The engine
+  // package (@torch/core) is deliberately NOT listed here — it's backend-only
+  // and must not be bundled into the static export.
+  transpilePackages: ['@torch/core-shared'],
   reactStrictMode: true,
 };
 

@@ -9,7 +9,7 @@ import {
   IMPELLER_CONSTANTS,
   getOdToCdwFactor,
   type ProcessInputs,
-} from '@torch/core';
+} from '@torch/core-shared';
 import type { AssessFormValues } from './assess-schema';
 
 function num(v: unknown, fallback: number): number {

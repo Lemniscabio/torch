@@ -12,7 +12,7 @@
 // engine's confidence interval widens beyond its validated envelope.
 
 import { useFormContext, useWatch } from 'react-hook-form';
-import { SOFT_WARNING_BOUNDS } from '@torch/core';
+import { SOFT_WARNING_BOUNDS } from '@torch/core-shared';
 import type { AssessFormValues } from '@/lib/assess-schema';
 
 const HIGH_DENSITY_BIOMASS = 50;

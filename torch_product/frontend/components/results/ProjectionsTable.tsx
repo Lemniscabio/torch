@@ -5,11 +5,11 @@
 // because the engine output gives us lab and target directly.
 
 import { useState } from 'react';
-import {
-  buildReactorScaleConfigs,
-  type PartialAssessmentResult,
-  type ProcessInputs,
-} from '@torch/core';
+import type {
+  PartialAssessmentResult,
+  ProcessInputs,
+  ReactorScaleConfigs,
+} from '@torch/core-shared';
 
 type Props = {
   inputs: ProcessInputs;
@@ -31,9 +31,8 @@ function midNumber(lab: number | undefined, target: number | undefined): number 
 }
 
 function rows(inputs: ProcessInputs, r: PartialAssessmentResult): Row[] {
-  const configs = buildReactorScaleConfigs(inputs, {
-    method: inputs.scaleup_criterion ?? 'power_per_volume',
-  });
+  const configs: ReactorScaleConfigs | undefined = r.reactor_configs;
+  if (!configs) return [];
   const pilotVolume = Math.sqrt(inputs.v_lab * inputs.v_target);
   const labAeration = inputs.vvm * inputs.v_lab;
   const targetAeration = configs.target.vvm * inputs.v_target;

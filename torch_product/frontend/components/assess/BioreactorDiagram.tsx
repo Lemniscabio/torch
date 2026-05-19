@@ -9,7 +9,7 @@
 // In `animated` mode the impellers spin (CSS perspective + rotateY) and
 // bubbles rise from sparger to liquid surface.
 
-import type { ImpellerType } from '@torch/core';
+import type { ImpellerType } from '@torch/core-shared';
 
 type Props = {
   hd?: number;          // H/D ratio (0.5 – 4.5), clamped
