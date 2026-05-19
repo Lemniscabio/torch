@@ -34,7 +34,7 @@ export function ProcessStep() {
   const o2Inlet = watch('o2_inlet');
   const doSetpoint = watch('do_setpoint');
 
-  const odFactor = species ? getOdToCdwFactor(species) : 0.43;
+  const odFactor = species ? getOdToCdwFactor(species) : 0.22;
   const cdwEquivalent =
     biomassMode === 'od' && typeof biomassValue === 'number' && Number.isFinite(biomassValue)
       ? biomassValue * odFactor
@@ -61,14 +61,14 @@ export function ProcessStep() {
               onClick={() => setValue('biomass_input_mode', 'cdw', { shouldValidate: false })}
             />
             <ModeChip
-              label="OD₆₀₀"
+              label="g/L WCW"
               selected={biomassMode === 'od'}
               onClick={() => setValue('biomass_input_mode', 'od', { shouldValidate: false })}
             />
           </div>
           <NumberInput
             id="biomass_cdw_g_l"
-            unit={biomassMode === 'od' ? 'OD' : 'g/L'}
+            unit={/*biomassMode === 'od' ? 'OD' : 'g/L'*/ 'g/L'}
             invalid={!!errors.biomass_cdw_g_l}
             {...register('biomass_cdw_g_l', { valueAsNumber: true })}
           />

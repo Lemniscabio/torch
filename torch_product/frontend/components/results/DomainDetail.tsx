@@ -63,11 +63,11 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
     }
     case 'mixing': {
       return {
-        question: 'Is mixing fast enough to dissipate substrate and pH gradients?',
+        question: 'Is mixing fast enough to dissipate gradients?',
         fraction: {
-          mathNumerator: <FormulaTerm symbol="τ" subscript="process" />,
+          mathNumerator: <FormulaTerm symbol="τ" subscript="req" />,
           mathDenominator: <FormulaTerm symbol="τ" subscript="mix" />,
-          textNumerator: 'Shortest process timescale (s)',
+          textNumerator: 'Required mixing timescale (s)',
           textDenominator: 'Mixing time (s)',
         },
         thresholds: [
@@ -115,12 +115,12 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
       const labMargin = r.co2.lab?.pco2_margin;
       const targetMargin = r.co2.target?.pco2_margin ?? r.co2.pco2_margin;
       return {
-        question: 'Is dissolved CO₂ at vessel bottom low enough to avoid inhibition?',
+        question: 'Is dissolved CO₂ in the reactor low enough to avoid toxicity?',
         fraction: {
           mathNumerator: <span>P<sup>threshold</sup><sub>CO₂</sub></span>,
-          mathDenominator: <span>P<sup>bottom</sup><sub>CO₂</sub></span>,
-          textNumerator: <span>CO<sub>2</sub> partial pressure threshold (bar)</span>,
-          textDenominator: <span>CO<sub>2</sub> partial pressure at bottom (bar)</span>,
+          mathDenominator: <span>P<sup>reactor</sup><sub>CO₂</sub></span>,
+          textNumerator: <span>CO<sub>2</sub> toxicity threshold (bar)</span>,
+          textDenominator: <span>CO<sub>2</sub> in the reactor (bar)</span>,
         },
         thresholds: [
           { label: 'low',      range: '> 1.5' },
@@ -144,7 +144,7 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
         fraction: {
           mathNumerator: <FormulaTerm symbol="Q" subscript="cooling" />,
           mathDenominator: <FormulaTerm symbol="Q" subscript="metabolic" />,
-          textNumerator: 'Available cooling capacity (kW)',
+          textNumerator: 'Available heat removal capacity (kW)',
           textDenominator: 'Metabolic heat generation (kW)',
         },
         thresholds: [

@@ -12,18 +12,18 @@ export const BIOMASS_INTERPOLATION_MAX_G_L = 150;  // g/L CDW — upper anchor (
 // Threshold above which non-Newtonian viscosity treatment is applied
 export const HIGH_DENSITY_BIOMASS_G_L = 60;        // g/L CDW
 
-// OD₆₀₀ → CDW conversion factors (g/L CDW per OD unit)
+// Wet cell weight → dry cell weight conversion factors (g DCW / g WCW)
 export const OD_TO_CDW_G_L: Record<OrganismSpecies, number> = {
-  e_coli:         0.43,
-  s_cerevisiae:   0.38,
-  p_pastoris:     0.36,
-  b_subtilis:     0.42,
-  other_bacteria: 0.43,
-  other_yeast:    0.38,
+  e_coli:         0.22,  // Glazyrina et al. (2010) Microb. Cell Fact.
+  b_subtilis:     0.22,  // Bratbak & Dundas (1984) Appl. Environ. Microbiol.
+  s_cerevisiae:   0.22,  // Huang et al. (2018) Biotechnol. Biofuels
+  p_pastoris:     0.20,  // Zhang et al. (2002); Looser et al. (2015) Biotechnol. Adv.
+  other_bacteria: 0.22,
+  other_yeast:    0.20,
 };
 
 export function getOdToCdwFactor(species: OrganismSpecies): number {
-  return OD_TO_CDW_G_L[species] ?? 0.43;
+  return OD_TO_CDW_G_L[species] ?? 0.22;
 }
 
 export const OUR_PEAK_BOUNDS: Partial<Record<OrganismSpecies, OurPeakBounds>> = {
