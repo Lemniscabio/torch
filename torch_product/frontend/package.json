@@ -5,7 +5,8 @@
   "description": "Torch product frontend — Next.js App Router. Vercel target.",
   "scripts": {
     "dev": "next dev --webpack -p 3001",
-    "build": "npm run audit:static && next build --webpack",
+    "build": "npm run build:shared && npm run audit:static && next build --webpack",
+    "build:shared": "npm --prefix ../packages/tea-core-shared install --no-audit --no-fund && npm --prefix ../packages/tea-core-shared run build",
     "start": "next start -p 3001",
     "typecheck": "tsc --noEmit",
     "audit:static": "node scripts/audit-static.mjs"
