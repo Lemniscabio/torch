@@ -16,7 +16,7 @@ import type { ReactorScaleConfig, ReactorScaleConfigs } from "../reactor_configs
 // Margin form for consistency with other domains:
 // heat_transfer_margin = Q_cool_max / Q_metabolic
 // lower margin => higher risk.
-function scoreHeatMargin(margin: number): RiskScore {
+export function scoreHeatMargin(margin: number): RiskScore {
   if (margin > 1 / HEAT_THRESHOLDS.low)      return "low";
   if (margin > 1 / HEAT_THRESHOLDS.moderate) return "moderate";
   if (margin > 1 / HEAT_THRESHOLDS.high)     return "high";

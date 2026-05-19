@@ -26,7 +26,7 @@ type DetailSpec = {
   target: { value: string; score: RiskScore };
 };
 
-function fmt(n: number | undefined, digits = 2, unit = '') {
+function fmt(n: number | undefined, digits = 1, unit = '') {
   if (n === undefined || !Number.isFinite(n)) return '—';
   return `${n.toFixed(digits)}${unit ? ` ${unit}` : ''}`;
 }
@@ -57,17 +57,17 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           { label: 'high',     range: '0.7–1.0' },
           { label: 'critical', range: '< 0.7' },
         ],
-        lab:    { value: fmtWithStd(ratioLab,    r.otr.otr_our_ratio_lab_std,    2), score: r.otr.score_lab },
-        target: { value: fmtWithStd(ratioTarget, r.otr.otr_our_ratio_target_std, 2), score: r.otr.score_target },
+        lab:    { value: fmtWithStd(ratioLab,    r.otr.otr_our_ratio_lab_std,    1), score: r.otr.score_lab },
+        target: { value: fmtWithStd(ratioTarget, r.otr.otr_our_ratio_target_std, 1), score: r.otr.score_target },
       };
     }
     case 'mixing': {
       return {
-        question: 'Is mixing fast enough to dissipate substrate and pH gradients?',
+        question: 'Is mixing fast enough to dissipate gradients?',
         fraction: {
-          mathNumerator: <FormulaTerm symbol="τ" subscript="process" />,
+          mathNumerator: <FormulaTerm symbol="τ" subscript="req" />,
           mathDenominator: <FormulaTerm symbol="τ" subscript="mix" />,
-          textNumerator: 'Shortest process timescale (s)',
+          textNumerator: 'Required mixing timescale (s)',
           textDenominator: 'Mixing time (s)',
         },
         thresholds: [
@@ -77,11 +77,11 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           { label: 'critical', range: '< 0.1' },
         ],
         lab:    {
-          value: fmtWithStd(r.mixing.process_mixing_ratio_lab,    r.mixing.process_mixing_ratio_lab_std,    2),
+          value: fmtWithStd(r.mixing.process_mixing_ratio_lab,    r.mixing.process_mixing_ratio_lab_std,    1),
           score: r.mixing.score_lab ?? r.mixing.score,
         },
         target: {
-          value: fmtWithStd(r.mixing.process_mixing_ratio_target, r.mixing.process_mixing_ratio_target_std, 2),
+          value: fmtWithStd(r.mixing.process_mixing_ratio_target, r.mixing.process_mixing_ratio_target_std, 1),
           score: r.mixing.score_target ?? r.mixing.score,
         },
       };
@@ -102,11 +102,11 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           { label: 'critical', range: '< 0.77' },
         ],
         lab:    {
-          value: fmtWithStd(r.shear.tip_speed_margin_lab, r.shear.tip_speed_margin_lab_std, 2),
+          value: fmtWithStd(r.shear.tip_speed_margin_lab, r.shear.tip_speed_margin_lab_std, 1),
           score: r.shear.score_lab,
         },
         target: {
-          value: fmtWithStd(r.shear.tip_speed_margin,     r.shear.tip_speed_margin_std,     2),
+          value: fmtWithStd(r.shear.tip_speed_margin,     r.shear.tip_speed_margin_std,     1),
           score: r.shear.score_target,
         },
       };
@@ -115,12 +115,12 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
       const labMargin = r.co2.lab?.pco2_margin;
       const targetMargin = r.co2.target?.pco2_margin ?? r.co2.pco2_margin;
       return {
-        question: 'Is dissolved CO₂ at vessel bottom low enough to avoid inhibition?',
+        question: 'Is dissolved CO₂ in the reactor low enough to avoid toxicity?',
         fraction: {
           mathNumerator: <span>P<sup>threshold</sup><sub>CO₂</sub></span>,
-          mathDenominator: <span>P<sup>bottom</sup><sub>CO₂</sub></span>,
-          textNumerator: <span>CO<sub>2</sub> partial pressure threshold (bar)</span>,
-          textDenominator: <span>CO<sub>2</sub> partial pressure at bottom (bar)</span>,
+          mathDenominator: <span>P<sup>reactor</sup><sub>CO₂</sub></span>,
+          textNumerator: <span>CO<sub>2</sub> toxicity threshold (bar)</span>,
+          textDenominator: <span>CO<sub>2</sub> in the reactor (bar)</span>,
         },
         thresholds: [
           { label: 'low',      range: '> 1.5' },
@@ -129,11 +129,11 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           { label: 'critical', range: '< 0.75' },
         ],
         lab:    {
-          value: r.co2.activated ? fmt(labMargin, 2) : '—',
+          value: r.co2.activated ? fmt(labMargin, 1) : '—',
           score: r.co2.lab?.score ?? r.co2.score,
         },
         target: {
-          value: r.co2.activated ? fmtWithStd(targetMargin, r.co2.pco2_margin_std, 2) : '—',
+          value: r.co2.activated ? fmtWithStd(targetMargin, r.co2.pco2_margin_std, 1) : '—',
           score: r.co2.target?.score ?? r.co2.score,
         },
       };
@@ -144,7 +144,7 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
         fraction: {
           mathNumerator: <FormulaTerm symbol="Q" subscript="cooling" />,
           mathDenominator: <FormulaTerm symbol="Q" subscript="metabolic" />,
-          textNumerator: 'Available cooling capacity (kW)',
+          textNumerator: 'Available heat removal capacity (kW)',
           textDenominator: 'Metabolic heat generation (kW)',
         },
         thresholds: [
@@ -154,11 +154,11 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           { label: 'critical', range: '< 1.0' },
         ],
         lab:    {
-          value: fmt(r.heat.lab?.heat_transfer_margin, 2),
+          value: fmt(r.heat.lab?.heat_transfer_margin, 1),
           score: r.heat.lab?.score ?? r.heat.score,
         },
         target: {
-          value: fmtWithStd(r.heat.target?.heat_transfer_margin ?? r.heat.heat_transfer_margin, r.heat.heat_transfer_margin_std, 2),
+          value: fmtWithStd(r.heat.target?.heat_transfer_margin ?? r.heat.heat_transfer_margin, r.heat.heat_transfer_margin_std, 1),
           score: r.heat.target?.score ?? r.heat.score,
         },
       };

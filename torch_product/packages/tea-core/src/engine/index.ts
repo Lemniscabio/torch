@@ -159,6 +159,8 @@ function generateBottleneckStatement(domain: RiskDomain, result: PartialAssessme
   }
 }
 
+export * from "./whatif";
+
 export function runAssessment(inputs: ProcessInputs): PartialAssessmentResult {
   const { derived, flags } = runAllDerivations(inputs);
 
