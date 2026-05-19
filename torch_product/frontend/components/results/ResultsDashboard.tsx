@@ -5,13 +5,15 @@
 // detail panel for the selected card, projections table, and a sticky
 // bottom bar (PDF placeholder for v1 — wired up in P2).
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type {
   PartialAssessmentResult,
   ProcessInputs,
   RiskScore,
 } from '@torch/core-shared';
+import { api } from '@/lib/api';
+import type { ModificationId, WhatIfResult } from '@/lib/whatif-types';
 import { Radar } from './Radar';
 import { DomainCard } from './DomainCard';
 import { DomainDetail } from './DomainDetail';
@@ -79,6 +81,56 @@ function scaleCriterionLabel(value: ProcessInputs['scaleup_criterion']) {
 
 export function ResultsDashboard({ inputs, results, isExample = false }: Props) {
   const [selected, setSelected] = useState<DomainKey>(() => results.primary_bottleneck.domain ?? 'otr');
+
+  // Shared what-if state — all five DomainDetail panels read from this and
+  // toggle into it. A modification applied in one panel affects every other
+  // panel's "With modifications" column too (a physical change to the
+  // reactor affects every domain).
+  const [activeModifications, setActiveModifications] = useState<Set<ModificationId>>(
+    () => new Set(),
+  );
+  const [whatIfResult, setWhatIfResult] = useState<WhatIfResult | null>(null);
+  const [whatIfLoading, setWhatIfLoading] = useState(false);
+  const fetchSeqRef = useRef(0);
+
+  const toggleModification = (id: ModificationId) => {
+    setActiveModifications((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (activeModifications.size === 0) {
+      setWhatIfResult(null);
+      setWhatIfLoading(false);
+      return;
+    }
+    const seq = ++fetchSeqRef.current;
+    setWhatIfLoading(true);
+    api<{ result: WhatIfResult }>('/api/assessments/whatif', {
+      method: 'POST',
+      authed: false,
+      body: JSON.stringify({
+        inputs,
+        params: { active: [...activeModifications] },
+      }),
+    })
+      .then((data) => {
+        if (seq === fetchSeqRef.current) {
+          setWhatIfResult(data.result);
+          setWhatIfLoading(false);
+        }
+      })
+      .catch(() => {
+        if (seq === fetchSeqRef.current) {
+          setWhatIfResult(null);
+          setWhatIfLoading(false);
+        }
+      });
+  }, [activeModifications, inputs]);
 
   const bottleneck = results.primary_bottleneck;
   const labScores = scoresAt('lab', results);
@@ -183,7 +235,14 @@ export function ResultsDashboard({ inputs, results, isExample = false }: Props) 
         </div>
       </section>
 
-      <DomainDetail domain={selected} results={results} />
+      <DomainDetail
+        domain={selected}
+        results={results}
+        activeModifications={activeModifications}
+        onToggleModification={toggleModification}
+        whatIfResult={whatIfResult}
+        whatIfLoading={whatIfLoading}
+      />
       <ProjectionsTable inputs={inputs} results={results} />
       </div>
     </main>

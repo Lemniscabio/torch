@@ -1,11 +1,23 @@
 import { prisma } from "../config/db";
-import { runAssessment, type ProcessInputs } from "@torch/core";
+import {
+  runAssessment,
+  runWhatIf,
+  type ProcessInputs,
+  type WhatIfParams,
+} from "@torch/core";
 
 // Compute results server-side. Single source of truth for assessment math —
 // the frontend no longer ships engine code, so the only valid place this
 // computation can happen is here.
 export function computeAssessment(inputs: ProcessInputs) {
   return runAssessment(inputs);
+}
+
+// Apply target-scale "what-if" modifications and recompute the five risk
+// domains for the modified inputs. The frontend uses this to power the
+// interactive what-if buttons on each domain panel.
+export function computeWhatIf(inputs: ProcessInputs, params: WhatIfParams) {
+  return runWhatIf(inputs, params);
 }
 
 export async function getAssessments(email: string) {

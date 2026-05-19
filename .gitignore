@@ -51,4 +51,4 @@ backend/.agents/
 backend/prisma/migrations/
 backend/skills-lock.json
 
-.claude/    
+.claude/    load-test.js

@@ -7,11 +7,55 @@
 import type { PartialAssessmentResult, RiskScore } from '@torch/core-shared';
 import type { ReactNode } from 'react';
 import { RISK_COLOR, RISK_LABEL, type DomainKey } from './riskTokens';
+import type { ModificationId, WhatIfResult } from '@/lib/whatif-types';
 
 type Props = {
   domain: DomainKey;
   results: PartialAssessmentResult;
+  activeModifications: Set<ModificationId>;
+  onToggleModification: (id: ModificationId) => void;
+  whatIfResult: WhatIfResult | null;
+  whatIfLoading: boolean;
 };
+
+// Maps the four what-if buttons rendered on every domain panel to engine
+// modification IDs. Order here is the order they render in the grid.
+const WHATIF_BUTTONS: { id: ModificationId; label: string; muted?: boolean }[] = [
+  { id: 'increase_impeller_rpm',        label: 'Increase impeller RPM' },
+  { id: 'increase_aeration_rate',       label: 'Increase aeration rate' },
+  { id: 'increase_oxygen_saturation',   label: 'Increase oxygen saturation' },
+  { id: 'switch_to_rushton_impeller',   label: 'Switch to Rushton impeller' },
+];
+
+function whatIfValueFor(d: DomainKey, w: WhatIfResult): { value: string; score: RiskScore } {
+  switch (d) {
+    case 'otr':
+      return {
+        value: fmtWithStd(w.otr.otr_our_ratio, w.otr.otr_our_ratio_std, 1),
+        score: w.otr.score,
+      };
+    case 'mixing':
+      return {
+        value: fmtWithStd(w.mixing.process_mixing_ratio, w.mixing.process_mixing_ratio_std, 1),
+        score: w.mixing.score,
+      };
+    case 'shear':
+      return {
+        value: fmtWithStd(w.shear.tip_speed_margin, w.shear.tip_speed_margin_std, 1),
+        score: w.shear.score,
+      };
+    case 'co2':
+      return {
+        value: fmtWithStd(w.co2.pco2_margin, w.co2.pco2_margin_std, 1),
+        score: w.co2.score,
+      };
+    case 'heat':
+      return {
+        value: fmtWithStd(w.heat.heat_transfer_margin, w.heat.heat_transfer_margin_std, 1),
+        score: w.heat.score,
+      };
+  }
+}
 
 type DetailSpec = {
   question: string;
@@ -166,8 +210,16 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
   }
 }
 
-export function DomainDetail({ domain, results }: Props) {
+export function DomainDetail({
+  domain,
+  results,
+  activeModifications,
+  onToggleModification,
+  whatIfResult,
+  whatIfLoading,
+}: Props) {
   const spec = specFor(domain, results);
+  const whatIf = whatIfResult ? whatIfValueFor(domain, whatIfResult) : null;
   return (
     <section
       className="mt-4 rounded-lg border p-6 shadow-[0_12px_30px_-26px_rgba(0,0,0,0.35)]"
@@ -212,9 +264,17 @@ export function DomainDetail({ domain, results }: Props) {
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className={`mt-5 grid grid-cols-1 gap-3 ${activeModifications.size > 0 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         <ScoreColumn title="Lab scale"    value={spec.lab.value}    score={spec.lab.score} />
         <ScoreColumn title="Target scale" value={spec.target.value} score={spec.target.score} />
+        {activeModifications.size > 0 ? (
+          <ScoreColumn
+            title="With modifications"
+            value={whatIf?.value ?? (whatIfLoading ? '…' : '—')}
+            score={whatIf?.score ?? 'low'}
+            dimmed={!whatIf}
+          />
+        ) : null}
       </div>
 
       <div
@@ -228,33 +288,45 @@ export function DomainDetail({ domain, results }: Props) {
           Make modifications to your target scale reactor and see live changes in risk
         </p>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <WhatIfButton label="Increase impeller RPM" />
-          <WhatIfButton label="Increase aeration rate" muted />
-          <WhatIfButton label="Increase oxygen saturation" />
-          <WhatIfButton label="Switch to Rushton impeller" />
+          {WHATIF_BUTTONS.map((b) => (
+            <WhatIfButton
+              key={b.id}
+              label={b.label}
+              active={activeModifications.has(b.id)}
+              onClick={() => onToggleModification(b.id)}
+            />
+          ))}
         </div>
       </div>
     </section>
   );
 }
 
-function ScoreColumn({ title, value, score }: { title: string; value: string; score: RiskScore }) {
+function ScoreColumn({
+  title, value, score, dimmed = false,
+}: { title: string; value: string; score: RiskScore; dimmed?: boolean }) {
   const c = RISK_COLOR[score];
   return (
     <div
       className="rounded-lg border p-4"
-      style={{ borderColor: 'var(--color-rule)', background: 'var(--color-paper-50)' }}
+      style={{
+        borderColor: 'var(--color-rule)',
+        background: 'var(--color-paper-50)',
+        opacity: dimmed ? 0.5 : 1,
+      }}
     >
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-ink-400)' }}>
           {title}
         </p>
-        <span
-          className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
-          style={{ background: c.bg, color: c.fg }}
-        >
-          {RISK_LABEL[score]}
-        </span>
+        {dimmed ? null : (
+          <span
+            className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
+            style={{ background: c.bg, color: c.fg }}
+          >
+            {RISK_LABEL[score]}
+          </span>
+        )}
       </div>
       <p
         className="mt-3 text-[28px] font-semibold tabular-nums tracking-[-0.02em]"
@@ -266,16 +338,27 @@ function ScoreColumn({ title, value, score }: { title: string; value: string; sc
   );
 }
 
-function WhatIfButton({ label, muted = false }: { label: string; muted?: boolean }) {
+function WhatIfButton({
+  label,
+  active = false,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
-      disabled={muted}
-      className="rounded-lg border px-4 py-3 text-left text-[12px] font-medium transition-colors"
+      onClick={onClick}
+      aria-pressed={active}
+      className="rounded-lg border px-4 py-3 text-left text-[12px] font-medium transition-[border-color,background-color,color,box-shadow]"
       style={{
-        borderColor: 'var(--color-rule)',
-        background: muted ? 'var(--color-paper-100)' : 'var(--color-paper-50)',
-        color: muted ? 'var(--color-ink-400)' : 'var(--color-ink-700)',
+        borderColor: active ? 'var(--color-flame-500)' : 'var(--color-rule)',
+        background: active ? 'rgba(255, 90, 31, 0.08)' : 'var(--color-paper-50)',
+        color: active ? 'var(--color-ink-900)' : 'var(--color-ink-700)',
+        boxShadow: active ? '0 0 0 1px var(--color-flame-500) inset' : 'none',
+        cursor: 'pointer',
       }}
     >
       {label}

@@ -1,5 +1,6 @@
-import { type ProcessInputs } from "@torch/core";
+import { type ProcessInputs, type WhatIfParams } from "@torch/core";
 export declare function computeAssessment(inputs: ProcessInputs): import("@torch/core").PartialAssessmentResult;
+export declare function computeWhatIf(inputs: ProcessInputs, params: WhatIfParams): import("@torch/core").WhatIfResult;
 export declare function getAssessments(email: string): Promise<{
     id: string;
     created_at: Date;

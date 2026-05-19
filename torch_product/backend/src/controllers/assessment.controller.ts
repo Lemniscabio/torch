@@ -76,3 +76,23 @@ export async function previewAssessment(req: Request, res: Response) {
     res.status(400).json({ error: error?.message || "Could not run assessment." });
   }
 }
+
+export async function whatifAssessment(req: Request, res: Response) {
+  try {
+    const { inputs, params } = req.body;
+    if (!inputs || !params) {
+      res.status(400).json({ error: "Missing inputs or params" });
+      return;
+    }
+    // Client sends `active` as a JSON array; engine expects a Set.
+    const normalized = {
+      ...params,
+      active: new Set<string>(Array.isArray(params.active) ? params.active : []),
+    };
+    const result = assessmentService.computeWhatIf(inputs, normalized as any);
+    res.json({ result });
+  } catch (error: any) {
+    console.error("What-if compute failed:", error);
+    res.status(400).json({ error: error?.message || "Could not run what-if." });
+  }
+}

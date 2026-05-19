@@ -38,6 +38,7 @@ exports.getAssessmentById = getAssessmentById;
 exports.deleteAssessment = deleteAssessment;
 exports.saveAssessment = saveAssessment;
 exports.previewAssessment = previewAssessment;
+exports.whatifAssessment = whatifAssessment;
 const assessmentService = __importStar(require("../services/assessment.service"));
 async function getAssessments(req, res) {
     try {
@@ -111,6 +112,26 @@ async function previewAssessment(req, res) {
     catch (error) {
         console.error("Preview compute failed:", error);
         res.status(400).json({ error: error?.message || "Could not run assessment." });
+    }
+}
+async function whatifAssessment(req, res) {
+    try {
+        const { inputs, params } = req.body;
+        if (!inputs || !params) {
+            res.status(400).json({ error: "Missing inputs or params" });
+            return;
+        }
+        // Client sends `active` as a JSON array; engine expects a Set.
+        const normalized = {
+            ...params,
+            active: new Set(Array.isArray(params.active) ? params.active : []),
+        };
+        const result = assessmentService.computeWhatIf(inputs, normalized);
+        res.json({ result });
+    }
+    catch (error) {
+        console.error("What-if compute failed:", error);
+        res.status(400).json({ error: error?.message || "Could not run what-if." });
     }
 }
 //# sourceMappingURL=assessment.controller.js.map

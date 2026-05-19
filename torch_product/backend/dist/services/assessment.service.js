@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.computeAssessment = computeAssessment;
+exports.computeWhatIf = computeWhatIf;
 exports.getAssessments = getAssessments;
 exports.getAssessmentById = getAssessmentById;
 exports.saveAssessment = saveAssessment;
@@ -12,6 +13,12 @@ const core_1 = require("@torch/core");
 // computation can happen is here.
 function computeAssessment(inputs) {
     return (0, core_1.runAssessment)(inputs);
+}
+// Apply target-scale "what-if" modifications and recompute the five risk
+// domains for the modified inputs. The frontend uses this to power the
+// interactive what-if buttons on each domain panel.
+function computeWhatIf(inputs, params) {
+    return (0, core_1.runWhatIf)(inputs, params);
 }
 async function getAssessments(email) {
     const assessments = await db_1.prisma.assessment.findMany({
