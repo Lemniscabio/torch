@@ -7,6 +7,7 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { ResultsDashboard } from '@/components/results/ResultsDashboard';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { useAuth } from '@/lib/auth-context';
+import { api } from '@/lib/api';
 import type { PartialAssessmentResult, ProcessInputs } from '@torch/core-shared';
 
 type Snapshot = {
@@ -31,9 +32,37 @@ function ResultsPreview() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (auth.status === 'authed') {
+    if (auth.status !== 'authed') return;
+
+    async function saveAndRedirect() {
+      try {
+        const raw = window.sessionStorage.getItem('torch_last_result');
+        if (raw) {
+          const parsed = JSON.parse(raw) as Snapshot & { savedAt?: number };
+          const ageMs = Date.now() - (parsed.savedAt ?? 0);
+          if (ageMs > 60 * 60 * 1000) {
+            // Stale snapshot (> 1 hour old) — don't auto-save it
+            router.replace('/results');
+            return;
+          }
+          const { inputs } = parsed;
+          const saved = await api<{ id: string | null; results: PartialAssessmentResult }>(
+            '/api/assessments/save',
+            { method: 'POST', body: JSON.stringify({ inputs }) },
+          );
+          window.sessionStorage.removeItem('torch_last_result');
+          if (saved.id) {
+            router.replace(`/results?id=${saved.id}`);
+            return;
+          }
+        }
+      } catch {
+        // save failed — fall through to sessionStorage-backed results page
+      }
       router.replace('/results');
     }
+
+    saveAndRedirect();
   }, [auth.status, router]);
 
   useEffect(() => {
