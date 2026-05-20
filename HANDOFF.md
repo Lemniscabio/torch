@@ -65,8 +65,8 @@ Full detail in [docs/backend-deploy-report.html](torch_product/docs/backend-depl
 
 ## Last verified state
 
-- **Backend:** v10, running. Rate limiting active (2000 req/15min global, 100/15min auth). PDF endpoint live. Memory 1Gi, timeout 120s, max-instances 5.
-- **Frontend:** `torch.lemnisca.bio`. PDF preview modal (`DownloadPdfButton`) — opens inline iframe, "Save to disk" downloads blob. Calls `POST /api/assessments/:id/pdf`.
+- **Backend:** v13, running. Rate limiting active (2000 req/15min global, 100/15min auth). PDF endpoint live with redesigned report template (`@page` CSS, Puppeteer `preferCSSPageSize` + `displayHeaderFooter`, page numbers in footer). Memory 1Gi, timeout 120s, max-instances 5.
+- **Frontend:** `torch.lemnisca.bio`. PDF modal portaled to `document.body`; inline iframe preview + auto-save to disk as soon as PDF arrives. Download PDF button pinned bottom-right (FAB-style) so it's discoverable while scrolling.
 - **Database:** single migration (`20260516010618_init`). User + Assessment tables. No Report model needed (PDF is inline, no persistence).
 - **CORS:** `FRONTEND_URL=https://torch.lemnisca.bio` (no trailing slash).
 - **Billing budget:** configured in GCP console.
@@ -75,6 +75,8 @@ Full detail in [docs/backend-deploy-report.html](torch_product/docs/backend-depl
 
 ### Next up
 - **Structured logging + Cloud Trace** — `pino` for JSON logs (Cloud Logging parses automatically), Cloud Trace SDK for per-request latency. ~30 min for logging alone.
+- **PostHog analytics** — track assessment, what-if, PDF download events.
+- **Results page animation pass** — review other Lemnisca products and align on motion/transition language for the results dashboard.
 
 ### Deferred / explicit no
 - Firebase Auth — not doing

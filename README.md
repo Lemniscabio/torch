@@ -131,7 +131,7 @@ Vercel auto-builds on push to `main`. No GCP work needed. The single env var tha
 - [x] Secret Manager holding `DATABASE_URL` and `JWT_SECRET`
 - [x] Artifact Registry repo `torch` in `us-central1`
 - [x] Cloud Build wired via `cloudbuild.yaml`
-- [x] Backend deployed to Cloud Run as `torch-backend` (current: v10)
+- [x] Backend deployed to Cloud Run as `torch-backend` (current: v13)
 - [x] CORS set to `https://torch.lemnisca.bio`
 - [x] Billing budget alert configured
 - [x] Rate limiting: 2000 req/15min global, 100 req/15min on `/api/auth/*`
@@ -143,13 +143,16 @@ Vercel auto-builds on push to `main`. No GCP work needed. The single env var tha
 - [x] Scale-dependent input limits in Step 3
 - [x] `estimate_mu` OUR mode (µ-based, gated to supported species)
 - [x] PDF generation: `POST /api/assessments/:id/pdf` renders HTML template via Puppeteer, streams PDF to client. `@react-pdf/renderer` removed.
-- [x] PDF preview modal: click "Download PDF Report" → modal opens with loading spinner → inline iframe preview → "Save to disk" button.
-- [x] MOSCH report template redesigned to mirror results dashboard (radar SVGs, domain cards, lab/target score columns, Lab→Pilot→Production projections table, Lemnisca platform footer).
+- [x] PDF preview modal: click "Download PDF Report" → modal opens with loading spinner → inline iframe preview, auto-saves to disk as soon as PDF arrives. Modal portaled to `document.body` so it escapes the FAB containing block.
+- [x] PDF report fully redesigned: full-bleed cover page, restrained ink palette, compact domain blocks, proper `@page` CSS rules, Puppeteer-native page footer with page numbers. `preferCSSPageSize` + `displayHeaderFooter` for no-cutoff rendering. CO₂ subscript via HTML `<sub>` tag (Cloud Run Chromium lacks U+2082).
+- [x] "Download PDF Report" button pinned bottom-right (FAB-style) for discoverability while scrolling.
 - [x] Unauthenticated assessment preview saved to DB on sign-in (not lost)
 
 ## What's left
 
 - **Structured logging + Cloud Trace** — `pino` for JSON logs, Cloud Trace for per-request latency. ~30 min for logging.
+- **PostHog analytics** — product analytics on key flows (assessment, what-if, PDF download).
+- **Results page animation pass** — check other Lemnisca products and align on motion/transition language for the results dashboard.
 
 ### Explicit no (decided, not forgotten)
 - Custom domain for backend — current GCP URL is fine
