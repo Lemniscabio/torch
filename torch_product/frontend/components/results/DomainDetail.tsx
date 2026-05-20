@@ -86,10 +86,10 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           textDenominator: 'Oxygen Uptake Rate (mmol/L/h)',
         },
         thresholds: [
-          { label: 'low',      range: '> 1.5' },
-          { label: 'moderate', range: '1.0–1.5' },
-          { label: 'high',     range: '0.7–1.0' },
           { label: 'critical', range: '< 0.7' },
+          { label: 'high',     range: '0.7–1.0' },
+          { label: 'moderate', range: '1.0–1.5' },
+          { label: 'low',      range: '> 1.5' },
         ],
         lab:    { value: fmtWithStd(ratioLab,    r.otr.otr_our_ratio_lab_std,    1), score: r.otr.score_lab },
         target: { value: fmtWithStd(ratioTarget, r.otr.otr_our_ratio_target_std, 1), score: r.otr.score_target },
@@ -105,10 +105,10 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           textDenominator: 'Mixing time (s)',
         },
         thresholds: [
-          { label: 'low',      range: '> 10' },
-          { label: 'moderate', range: '1–10' },
-          { label: 'high',     range: '0.1–1' },
           { label: 'critical', range: '< 0.1' },
+          { label: 'high',     range: '0.1–1' },
+          { label: 'moderate', range: '1–10' },
+          { label: 'low',      range: '> 10' },
         ],
         lab:    {
           value: fmtWithStd(r.mixing.process_mixing_ratio_lab,    r.mixing.process_mixing_ratio_lab_std,    1),
@@ -124,16 +124,16 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
       return {
         question: 'Is impeller tip speed low enough to protect cells from damage?',
         fraction: {
-          mathNumerator: <span>v<sup>threshold</sup><sub>tip</sub></span>,
-          mathDenominator: <span>v<sup>impeller</sup><sub>tip</sub></span>,
+          mathNumerator: <FormulaTermStacked symbol="v" superscript="threshold" subscript="tip" />,
+          mathDenominator: <FormulaTermStacked symbol="v" superscript="impeller" subscript="tip" />,
           textNumerator: 'Tip speed threshold of microbe (m/s)',
           textDenominator: 'Impeller tip speed (m/s)',
         },
         thresholds: [
-          { label: 'low',      range: '> 1.43' },
-          { label: 'moderate', range: '1.0–1.43' },
-          { label: 'high',     range: '0.77–1.0' },
           { label: 'critical', range: '< 0.77' },
+          { label: 'high',     range: '0.77–1.0' },
+          { label: 'moderate', range: '1.0–1.43' },
+          { label: 'low',      range: '> 1.43' },
         ],
         lab:    {
           value: fmtWithStd(r.shear.tip_speed_margin_lab, r.shear.tip_speed_margin_lab_std, 1),
@@ -151,16 +151,16 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
       return {
         question: 'Is dissolved CO₂ in the reactor low enough to avoid toxicity?',
         fraction: {
-          mathNumerator: <span>P<sup>threshold</sup><sub>CO₂</sub></span>,
-          mathDenominator: <span>P<sup>reactor</sup><sub>CO₂</sub></span>,
+          mathNumerator: <FormulaTermStacked symbol="P" superscript="threshold" subscript={<>CO<sub>2</sub></>} />,
+          mathDenominator: <FormulaTermStacked symbol="P" superscript="reactor" subscript={<>CO<sub>2</sub></>} />,
           textNumerator: <span>CO<sub>2</sub> toxicity threshold (bar)</span>,
           textDenominator: <span>CO<sub>2</sub> in the reactor (bar)</span>,
         },
         thresholds: [
-          { label: 'low',      range: '> 1.5' },
-          { label: 'moderate', range: '1.0–1.5' },
-          { label: 'high',     range: '0.75–1.0' },
           { label: 'critical', range: '< 0.75' },
+          { label: 'high',     range: '0.75–1.0' },
+          { label: 'moderate', range: '1.0–1.5' },
+          { label: 'low',      range: '> 1.5' },
         ],
         lab:    {
           value: r.co2.activated ? fmt(labMargin, 1) : '—',
@@ -182,10 +182,10 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           textDenominator: 'Metabolic heat generation (kW)',
         },
         thresholds: [
-          { label: 'low',      range: '> 1.67' },
-          { label: 'moderate', range: '1.18–1.67' },
-          { label: 'high',     range: '1.0–1.18' },
           { label: 'critical', range: '< 1.0' },
+          { label: 'high',     range: '1.0–1.18' },
+          { label: 'moderate', range: '1.18–1.67' },
+          { label: 'low',      range: '> 1.67' },
         ],
         lab:    {
           value: fmt(r.heat.lab?.heat_transfer_margin, 1),
@@ -764,6 +764,18 @@ function FormulaTerm({ symbol, subscript }: { symbol: string; subscript: string 
     <span>
       {symbol}
       <sub className="text-[0.62em] leading-none">{subscript}</sub>
+    </span>
+  );
+}
+
+function FormulaTermStacked({ symbol, superscript, subscript }: { symbol: ReactNode; superscript: ReactNode; subscript: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-[1px]">
+      <span>{symbol}</span>
+      <span className="inline-flex flex-col items-start leading-[1.15]" style={{ fontSize: '0.6em' }}>
+        <span>{superscript}</span>
+        <span>{subscript}</span>
+      </span>
     </span>
   );
 }

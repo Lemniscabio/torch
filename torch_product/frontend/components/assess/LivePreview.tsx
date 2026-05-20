@@ -96,7 +96,7 @@ export function LivePreview() {
             }}
             aria-hidden
           >
-            ↓
+            ↑
           </div>
         </div>
 

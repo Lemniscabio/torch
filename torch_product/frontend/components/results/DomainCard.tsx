@@ -5,6 +5,7 @@
 // renders DomainDetail for the selected card below the row.
 
 import type { RiskScore } from '@torch/core-shared';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { RISK_COLOR, RISK_LABEL, type DomainKey } from './riskTokens';
 
 type Props = {
@@ -62,7 +63,7 @@ export function DomainCard({ domainKey, letter, label, score, metric, selected, 
         className="absolute bottom-3 right-3 grid h-5 w-5 place-items-center rounded-full text-[11px]"
         style={{ background: 'var(--color-paper-200)', color: 'var(--color-ink-500)' }}
       >
-        {selected ? '⌃' : '⌄'}
+        {selected ? <ChevronUp size={12} strokeWidth={2} /> : <ChevronDown size={12} strokeWidth={2} />}
       </span>
     </button>
   );
