@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getToken } from '@/lib/api';
 
 const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000').replace(/\/$/, '');
@@ -11,52 +11,188 @@ type Props = {
   disabled?: boolean;
 };
 
-export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type ModalState = 'loading' | 'ready' | 'error';
 
-  async function download() {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const token = getToken();
-      const res = await fetch(`${BACKEND_URL}/api/assessments/${assessmentId}/pdf`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error(`${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch {
-      setError('PDF generation failed. Try again.');
-    } finally {
-      setBusy(false);
+export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<ModalState>('loading');
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
+
+  function openModal() {
+    if (disabled) return;
+    setOpen(true);
+    setState('loading');
+    fetchedRef.current = false;
+    setBlobUrl(null);
+  }
+
+  function closeModal() {
+    setOpen(false);
+    if (blobUrl) {
+      URL.revokeObjectURL(blobUrl);
+      setBlobUrl(null);
     }
   }
 
+  useEffect(() => {
+    if (!open || fetchedRef.current) return;
+    fetchedRef.current = true;
+
+    const token = getToken();
+    fetch(`${BACKEND_URL}/api/assessments/${assessmentId}/pdf`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        setBlobUrl(url);
+        setState('ready');
+      })
+      .catch(() => {
+        setState('error');
+      });
+  }, [open, assessmentId]);
+
+  function save() {
+    if (!blobUrl) return;
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
   return (
-    <div className="flex items-center gap-2">
-      {error ? (
-        <span className="text-meta" style={{ color: 'var(--color-flame-700)' }}>
-          {error}
-        </span>
-      ) : null}
+    <>
       <button
         type="button"
-        onClick={download}
-        disabled={busy || disabled}
+        onClick={openModal}
+        disabled={disabled}
         className="btn btn-flame"
       >
-        {busy ? 'Generating…' : 'Download PDF Report'}
+        Download PDF Report
       </button>
-    </div>
+
+      {open ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="PDF preview"
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center px-4 py-6"
+        >
+          {/* backdrop */}
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute inset-0 cursor-default"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            onClick={closeModal}
+          />
+
+          <div
+            className="relative flex flex-col w-full rounded-2xl border shadow-[0_28px_90px_-44px_rgba(0,0,0,0.85)] overflow-hidden"
+            style={{
+              maxWidth: 860,
+              height: '88vh',
+              borderColor: 'var(--color-rule-strong)',
+              background: 'var(--color-paper-100)',
+            }}
+          >
+            {/* header */}
+            <div
+              className="flex items-center justify-between gap-4 px-5 py-4 flex-shrink-0"
+              style={{ borderBottom: '1px solid var(--color-rule)' }}
+            >
+              <p className="text-[14px] font-semibold" style={{ color: 'var(--color-ink-800)' }}>
+                PDF Report
+              </p>
+              <div className="flex items-center gap-3">
+                {state === 'ready' ? (
+                  <button
+                    type="button"
+                    onClick={save}
+                    className="btn btn-flame"
+                    style={{ padding: '6px 16px', fontSize: 13 }}
+                  >
+                    Save to disk
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="btn btn-ghost"
+                  style={{ padding: '6px 14px', fontSize: 13 }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {/* body */}
+            <div className="flex-1 min-h-0 relative">
+              {state === 'loading' ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <Spinner />
+                  <p className="text-[13px]" style={{ color: 'var(--color-ink-400)' }}>
+                    Generating PDF…
+                  </p>
+                </div>
+              ) : state === 'error' ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <p className="text-[14px]" style={{ color: 'var(--color-flame-700)' }}>
+                    PDF generation failed.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ fontSize: 13 }}
+                    onClick={() => {
+                      setState('loading');
+                      fetchedRef.current = false;
+                    }}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : blobUrl ? (
+                <iframe
+                  src={blobUrl}
+                  className="w-full h-full"
+                  style={{ border: 'none', display: 'block' }}
+                  title="PDF preview"
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 28 28"
+      fill="none"
+      style={{ animation: 'spin 0.8s linear infinite' }}
+    >
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <circle cx="14" cy="14" r="11" stroke="var(--color-rule-strong)" strokeWidth="3" />
+      <path
+        d="M14 3 A11 11 0 0 1 25 14"
+        stroke="var(--color-flame-500)"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }

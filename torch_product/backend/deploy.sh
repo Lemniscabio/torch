@@ -15,8 +15,8 @@ gcloud run deploy torch-backend \
   --set-secrets=DATABASE_URL=torch-database-url:latest,JWT_SECRET=torch-jwt-secret:latest \
   --set-env-vars=NODE_ENV=production,FRONTEND_URL=https://torch.lemnisca.bio,COOKIE_SECURE=true \
   --port=8080 \
-  --memory=512Mi \
+  --memory=1Gi \
   --cpu=1 \
   --min-instances=0 \
-  --max-instances=3 \
-  --timeout=60
+  --max-instances=5 \
+  --timeout=120
