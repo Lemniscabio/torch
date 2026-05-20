@@ -167,7 +167,9 @@ function Row({
         >
           <TrashIcon />
         </button>
-        <ChevronRightIcon aria-hidden className="flex-shrink-0" style={{ color: 'var(--color-ink-500)' }} />
+        <span aria-hidden className="flex-shrink-0" style={{ color: 'var(--color-ink-500)' }}>
+          <ChevronRightIcon />
+        </span>
       </div>
     </li>
   );

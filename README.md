@@ -115,7 +115,7 @@ From `torch_product/`:
 export PROJECT_ID=project-688a4c78-5d5b-45b3-b5d
 export REGION=us-central1
 export INSTANCE_CONN=project-688a4c78-5d5b-45b3-b5d:us-central1:torch-db
-export IMAGE=us-central1-docker.pkg.dev/${PROJECT_ID}/torch/backend:vN   # bump N each time
+export IMAGE=us-central1-docker.pkg.dev/${PROJECT_ID}/torch/backend:vN   # bump N each time(Current latest is v7, check before writing: https://console.cloud.google.com/artifacts/docker/project-688a4c78-5d5b-45b3-b5d/us-central1/torch/backend?project=project-688a4c78-5d5b-45b3-b5d&rapt=AEjHL4PgVGOyPb7c-HlNBrclq0TVMZAQMI09_KspZ6YCTUOqSIDUf1J5v2fFwfiGjkFGWs9x-9F7Jk3udSTjNnKgFLIFiZQpxrci2OtL09TF-hZvY7haFHM)
 
 gcloud builds submit --config=cloudbuild.yaml --substitutions=_IMAGE=$IMAGE .
 bash backend/deploy.sh
