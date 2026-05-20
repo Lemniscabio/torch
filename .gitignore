@@ -6,7 +6,7 @@ frontend/.next/
 frontend/out/
 
 # backend build
-backend/dist/
+torch_product/backend/dist/
 
 # packages build outputs (tea-core, tea-core-shared compile to dist/)
 torch_product/packages/*/dist/
