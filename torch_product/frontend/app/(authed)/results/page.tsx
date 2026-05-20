@@ -83,7 +83,7 @@ function ResultsView() {
 
   if (!snap) return <LoadingShell />;
 
-  return <ResultsDashboard inputs={snap.inputs} results={snap.results} />;
+  return <ResultsDashboard inputs={snap.inputs} results={snap.results} assessmentId={id ?? undefined} />;
 }
 
 function LoadingShell() {

@@ -20,12 +20,14 @@ import { Radar } from './Radar';
 import { DomainCard } from './DomainCard';
 import { DomainDetail } from './DomainDetail';
 import { ProjectionsTable } from './ProjectionsTable';
+import { DownloadPdfButton } from './DownloadPdfButton';
 import { DOMAIN_ORDER, RISK_COLOR, RISK_LABEL, type DomainKey } from './riskTokens';
 import { speciesLabel } from '@/lib/format';
 
 type Props = {
   inputs: ProcessInputs;
   results: PartialAssessmentResult;
+  assessmentId?: string;
   isExample?: boolean;
 };
 
@@ -81,7 +83,7 @@ function scaleCriterionLabel(value: ProcessInputs['scaleup_criterion']) {
   }
 }
 
-export function ResultsDashboard({ inputs, results, isExample = false }: Props) {
+export function ResultsDashboard({ inputs, results, assessmentId, isExample = false }: Props) {
   const [selected, setSelected] = useState<DomainKey>(() => results.primary_bottleneck.domain ?? 'otr');
 
   // Shared what-if state across all five panels.
@@ -276,6 +278,15 @@ export function ResultsDashboard({ inputs, results, isExample = false }: Props) 
         whatIfLoading={whatIfLoading}
       />
       <ProjectionsTable inputs={inputs} results={results} />
+
+      {assessmentId ? (
+        <div className="mt-8 flex justify-end">
+          <DownloadPdfButton
+            assessmentId={assessmentId}
+            filename={`lemnisca-torch-${(inputs.organism_species ?? 'report').replace(/_/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`}
+          />
+        </div>
+      ) : null}
       </div>
     </main>
   );

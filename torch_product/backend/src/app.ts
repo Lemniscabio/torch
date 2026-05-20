@@ -6,6 +6,7 @@ import { errorHandler } from "./middlewares/error.middleware";
 import authRoutes from "./routes/auth.route";
 import assessmentRoutes from "./routes/assessment.route";
 import userRoutes from "./routes/user.route";
+import reportRoutes from "./routes/report.route";
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use("/api/auth", authLimiter);
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/assessments", assessmentRoutes);
+app.use("/api/assessments", reportRoutes);
 app.use("/api/user", userRoutes);
 
 // Health check
