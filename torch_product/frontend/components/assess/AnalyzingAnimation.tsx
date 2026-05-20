@@ -17,7 +17,7 @@ import { BioreactorDiagram } from './BioreactorDiagram';
 
 const STAGES = [
   'Calculating power input…',
-  'Estimating kLa via van’t Riet…',
+  'Estimating kLa…',
   'Computing mixing times…',
   'Evaluating heat removal…',
   'Assessing scale-up risks…',
