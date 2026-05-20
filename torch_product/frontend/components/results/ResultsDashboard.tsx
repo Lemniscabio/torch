@@ -279,15 +279,21 @@ export function ResultsDashboard({ inputs, results, assessmentId, isExample = fa
       />
       <ProjectionsTable inputs={inputs} results={results} />
 
+      </div>
+
       {assessmentId ? (
-        <div className="mt-8 flex justify-end">
+        <div
+          className="fixed bottom-6 right-6 z-40"
+          style={{
+            filter: 'drop-shadow(0 10px 24px rgba(0,0,0,0.18)) drop-shadow(0 4px 8px rgba(0,0,0,0.08))',
+          }}
+        >
           <DownloadPdfButton
             assessmentId={assessmentId}
             filename={`lemnisca-torch-${(inputs.organism_species ?? 'report').replace(/_/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`}
           />
         </div>
       ) : null}
-      </div>
     </main>
   );
 }
