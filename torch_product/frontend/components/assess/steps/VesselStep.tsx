@@ -385,9 +385,10 @@ function ChipButton({
       onClick={onClick}
       className="rounded-lg border px-3.5 py-2 text-[14px] tabular-nums transition-[border-color,background-color,color]"
       style={{
-        borderColor: selected ? 'rgba(255,255,255,0.25)' : 'var(--color-ink-200)',
-        background:  selected ? 'rgba(255,255,255,0.10)' : 'var(--color-paper-200)',
+        borderColor: selected ? 'var(--color-ink-500)' : 'var(--color-ink-200)',
+        background:  selected ? 'var(--color-paper-300)' : 'var(--color-paper-200)',
         color:       selected ? 'var(--color-ink-900)'   : 'var(--color-ink-700)',
+        boxShadow:   selected ? '0 0 0 1px var(--color-rule-strong) inset' : 'none',
       }}
     >
       {label}
@@ -414,9 +415,10 @@ function ImpellerCountGroup({
             title={disabled ? 'Insufficient H/T clearance for this many impellers.' : undefined}
             className="grid h-10 w-12 place-items-center rounded-lg border text-[14px] tabular-nums transition-[border-color,background-color,color]"
             style={{
-              borderColor: selected ? 'rgba(255,255,255,0.25)' : 'var(--color-ink-200)',
-              background:  selected ? 'rgba(255,255,255,0.10)' : 'var(--color-paper-200)',
+              borderColor: selected ? 'var(--color-ink-500)' : 'var(--color-ink-200)',
+              background:  selected ? 'var(--color-paper-300)' : 'var(--color-paper-200)',
               color:       selected ? 'var(--color-ink-900)'   : 'var(--color-ink-700)',
+              boxShadow:   selected ? '0 0 0 1px var(--color-rule-strong) inset' : 'none',
               opacity:     disabled ? 0.35 : 1,
               cursor:      disabled ? 'not-allowed' : 'pointer',
             }}

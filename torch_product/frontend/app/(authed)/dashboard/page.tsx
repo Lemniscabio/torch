@@ -128,28 +128,26 @@ function Row({
   return (
     <li>
       <div
-        className="group flex items-center gap-4 py-4"
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(); }}
+        className="group flex cursor-pointer items-center gap-4 py-4"
         style={{ borderColor: 'var(--color-rule)' }}
       >
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex flex-1 items-center gap-4 text-left"
-        >
-          <span
-            aria-hidden
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ background: worstColor.fg }}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-title truncate" style={{ color: 'var(--color-ink-900)' }}>
-              {speciesLabel(row.inputs.organism_species)}
-            </p>
-            <p className="text-meta mt-1">
-              {row.inputs.v_lab} L → {row.inputs.v_target} L · {relativeTime(row.created_at)}
-            </p>
-          </div>
-        </button>
+        <span
+          aria-hidden
+          className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
+          style={{ background: worstColor.fg }}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-title truncate" style={{ color: 'var(--color-ink-900)' }}>
+            {speciesLabel(row.inputs.organism_species)}
+          </p>
+          <p className="text-meta mt-1">
+            {row.inputs.v_lab} L → {row.inputs.v_target} L · {relativeTime(row.created_at)}
+          </p>
+        </div>
 
         <div className="hidden items-center gap-1.5 sm:flex" aria-hidden>
           {DOMAIN_ORDER.map((d) => (
@@ -164,20 +162,12 @@ function Row({
             onDelete();
           }}
           aria-label="Delete assessment"
-          className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-[color:var(--color-paper-200)]"
+          className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-md transition-colors hover:bg-[color:var(--color-paper-200)]"
           style={{ color: 'var(--color-ink-500)' }}
         >
           <TrashIcon />
         </button>
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-label="Open assessment"
-          className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-[color:var(--color-paper-200)]"
-          style={{ color: 'var(--color-ink-500)' }}
-        >
-          <ChevronRightIcon />
-        </button>
+        <ChevronRightIcon aria-hidden className="flex-shrink-0" style={{ color: 'var(--color-ink-500)' }} />
       </div>
     </li>
   );

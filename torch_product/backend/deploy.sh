@@ -13,7 +13,7 @@ gcloud run deploy torch-backend \
   --allow-unauthenticated \
   --add-cloudsql-instances="$INSTANCE_CONN" \
   --set-secrets=DATABASE_URL=torch-database-url:latest,JWT_SECRET=torch-jwt-secret:latest \
-  --set-env-vars=NODE_ENV=production,FRONTEND_URL=https://torch-snowy.vercel.app,COOKIE_SECURE=true \
+  --set-env-vars=NODE_ENV=production,FRONTEND_URL=https://torch.lemnisca.bio,COOKIE_SECURE=true \
   --port=8080 \
   --memory=512Mi \
   --cpu=1 \

@@ -269,7 +269,7 @@ export function DomainDetail({
   // is driven by the Inlet O₂ stepper (params.oxygen_level), so the button
   // would be a no-op duplicate.
   const buttons = MODIFICATION_CATALOG.filter(
-    (m) => m.domains.includes(domain) && m.id !== 'increase_oxygen_saturation',
+    (m) => m.domains.includes(domain) && m.id !== 'increase_oxygen_saturation' && m.id !== 'reduce_feeding_frequency',
   );
   const operational = buttons.filter((m) => m.section === 'operational');
   // Design section temporarily hidden — per UX review. Re-enable by removing

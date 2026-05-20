@@ -6,6 +6,7 @@
 // as a 4-button toggle group, DO setpoint as a range slider, plus
 // temperature and cooling-water inlet.
 
+import { useEffect } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { getOdToCdwFactor } from '@torch/core-shared';
 import { Field } from '@/components/ui/Field';
@@ -33,6 +34,14 @@ export function ProcessStep() {
   const species = watch('organism_species');
   const o2Inlet = watch('o2_inlet');
   const doSetpoint = watch('do_setpoint');
+
+  const isOtherOrganism = species === 'other_bacteria' || species === 'other_yeast';
+
+  useEffect(() => {
+    if (isOtherOrganism && ourMode !== 'measured') {
+      setValue('our_mode', 'measured', { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    }
+  }, [isOtherOrganism, ourMode, setValue]);
 
   const odFactor = species ? getOdToCdwFactor(species) : 0.22;
   const cdwEquivalent =
@@ -68,7 +77,7 @@ export function ProcessStep() {
           </div>
           <NumberInput
             id="biomass_cdw_g_l"
-            unit={/*biomassMode === 'od' ? 'OD' : 'g/L'*/ 'g/L'}
+            unit={biomassMode === 'od' ? 'OD' : 'g/L'}
             invalid={!!errors.biomass_cdw_g_l}
             {...register('biomass_cdw_g_l', { valueAsNumber: true })}
           />
@@ -97,6 +106,7 @@ export function ProcessStep() {
             title="Estimate from specific growth rate (µ)"
             description="Directional confidence for four domains."
             selected={ourMode === 'estimate_mu'}
+            disabled={isOtherOrganism}
             onSelect={() => setValue('our_mode', 'estimate_mu', {
               shouldDirty: true,
               shouldTouch: true,
@@ -107,6 +117,7 @@ export function ProcessStep() {
             title="Estimate from physiology"
             description="Directional confidence for four domains."
             selected={ourMode === 'estimate'}
+            disabled={isOtherOrganism}
             onSelect={() => setValue('our_mode', 'estimate', {
               shouldDirty: true,
               shouldTouch: true,
@@ -247,9 +258,10 @@ function ModeChip({ label, selected, onClick }: { label: string; selected: boole
       onClick={onClick}
       className="rounded-md border px-2.5 py-1 text-[11.5px] font-medium tracking-[-0.005em] transition-[border-color,background-color,color]"
       style={{
-        borderColor: selected ? 'rgba(255,255,255,0.25)' : 'var(--color-ink-200)',
-        background:  selected ? 'rgba(255,255,255,0.10)' : 'var(--color-paper-200)',
+        borderColor: selected ? 'var(--color-ink-500)' : 'var(--color-ink-200)',
+        background:  selected ? 'var(--color-paper-300)' : 'var(--color-paper-200)',
         color:       selected ? 'var(--color-ink-900)'   : 'var(--color-ink-500)',
+        boxShadow:   selected ? '0 0 0 1px var(--color-rule-strong) inset' : 'none',
       }}
     >
       {label}
@@ -266,8 +278,9 @@ function O2Chip({
       onClick={onClick}
       className="flex flex-col items-start rounded-lg border px-3.5 py-2.5 text-left transition-[border-color,background-color]"
       style={{
-        borderColor: selected ? 'rgba(255,255,255,0.25)' : 'var(--color-ink-200)',
-        background:  selected ? 'rgba(255,255,255,0.10)' : 'var(--color-paper-200)',
+        borderColor: selected ? 'var(--color-ink-500)' : 'var(--color-ink-200)',
+        background:  selected ? 'var(--color-paper-300)' : 'var(--color-paper-200)',
+        boxShadow:   selected ? '0 0 0 1px var(--color-rule-strong) inset' : 'none',
       }}
     >
       <span
@@ -284,11 +297,12 @@ function O2Chip({
 }
 
 function OurCard({
-  title, description, selected, onSelect,
+  title, description, selected, disabled, onSelect,
 }: {
   title: string;
   description: string;
   selected: boolean;
+  disabled?: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -296,13 +310,15 @@ function OurCard({
       type="button"
       role="radio"
       aria-checked={selected}
+      disabled={disabled}
       onClick={onSelect}
       className="rounded-lg border p-4 text-left transition-[border-color,background-color]"
       style={{
-        borderColor: selected ? 'rgba(255,255,255,0.25)' : 'var(--color-ink-200)',
-        background: selected ? 'rgba(255,255,255,0.08)' : 'var(--color-paper-200)',
-        boxShadow: selected ? '0 0 0 1px rgba(255,255,255,0.12) inset' : 'none',
-        cursor: 'pointer',
+        borderColor: selected ? 'var(--color-ink-500)' : 'var(--color-ink-200)',
+        background:  selected ? 'var(--color-paper-300)' : 'var(--color-paper-200)',
+        boxShadow:   selected ? '0 0 0 1px var(--color-rule-strong) inset' : 'none',
+        cursor:  disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
       }}
     >
       <p
