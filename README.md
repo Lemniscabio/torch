@@ -3,9 +3,9 @@
 Bioreactor scale-up assessment tool. Users describe a lab-scale fermentation, the engine flags scale-up risks across mixing, oxygen transfer, heat transfer, and CO₂ stripping, and returns a structured risk report.
 
 **Live**
-- Frontend: <https://torch-snowy.vercel.app>
+- Frontend: <https://torch.lemnisca.bio>
 - Backend: <https://torch-backend-746208330214.us-central1.run.app>
-- Health check: `/api/health`
+- Health check: `GET /api/health`
 
 ## Repo layout
 
@@ -21,13 +21,13 @@ torch/
 │   │   └── backend-deploy-report.html   # detailed deploy walkthrough
 │   ├── docker-compose.yml          # local Postgres for dev
 │   ├── cloudbuild.yaml             # Cloud Build config for the backend image
-│   └── README.md                   # app-level details (local dev setup, layout)
+│   └── README.md                   # app-level layout and local dev setup
 │
 └── product_v1/                     # legacy. CRUD scaffolding only, no engine.
                                     #   Kept for reference; not deployed.
 ```
 
-The split between `tea-core` and `tea-core-shared` is deliberate: the **engine math is backend-only** (organism kinetics, correlations, scoring rubrics, `runAssessment`, `runWhatIf`), while the **public surface** (types, input bounds, scale-up envelopes, defaults, what-if catalog labels) is what the frontend imports. Frontend never bundles engine code; it POSTs inputs to the backend and renders the structured response.
+The split between `tea-core` and `tea-core-shared` is deliberate: engine math is backend-only, while the public surface (types, bounds, what-if catalog) is what the frontend imports. Frontend never bundles engine code; it POSTs inputs to the backend and renders the structured response.
 
 Day-to-day work happens in `torch_product/`. `product_v1/` is read-only history.
 
@@ -46,6 +46,7 @@ Cloud Run (torch-backend) ── Express + Prisma + @torch/core (engine)
                             POST /api/assessments/preview   (compute, no save)
                             POST /api/assessments/save      (compute + persist, authed)
                             POST /api/assessments/whatif    (modified scenarios)
+                            POST /api/assessments/:id/pdf   (generate PDF, authed)
     │
     │  Unix socket /cloudsql/<conn>
     ▼
@@ -67,10 +68,11 @@ Frontend and backend are **fully independent** apps. The browser talks straight 
 | Database | PostgreSQL 16 | Cloud SQL |
 | Engine | `@torch/core` (file: dep, source in `packages/tea-core`) | backend only |
 | Shared types + catalog | `@torch/core-shared` (file: dep, source in `packages/tea-core-shared`) | frontend + backend |
+| PDF generation | `@sparticuz/chromium` + `puppeteer-core` (inline, no worker) | backend |
 | Auth | bcrypt + JWT (localStorage, `Authorization: Bearer`) | — |
 | Secrets | Secret Manager (`torch-database-url`, `torch-jwt-secret`) | GCP |
 | Image registry | Artifact Registry (`us-central1`, repo `torch`) | GCP |
-| CI/CD | Manual `gcloud builds submit` + `bash deploy.sh` for now | — |
+| CI/CD | Manual `gcloud builds submit` + `bash deploy.sh` | — |
 
 ## Local development
 
@@ -88,9 +90,7 @@ docker compose up -d
 ( cd packages/tea-core && npm install )
 
 # day-to-day (two terminals)
-# Terminal 1
 cd backend && npm run dev          # :4000
-# Terminal 2
 cd frontend && npm run dev         # :3001
 ```
 
@@ -101,13 +101,9 @@ cd torch_product/packages/tea-core && npm test
 
 ## Deploying
 
-The full story — every command we ran, every decision, why each piece exists — is written up here:
+Full story: **[Backend deploy walkthrough](torch_product/docs/backend-deploy-report.html)** — open in a browser.
 
-> **[Backend deploy walkthrough](torch_product/docs/backend-deploy-report.html)** — open the HTML in a browser.
-
-That doc covers Cloud SQL provisioning, Secret Manager, Artifact Registry, Cloud Build, the IAM roles we needed and why, the Prisma migration step via the Cloud SQL Auth Proxy, the final `gcloud run deploy`, and the everyday redeploy / rollback flow.
-
-### Quick reference — redeploying the backend after code changes
+### Quick reference — redeploying the backend
 
 From `torch_product/`:
 
@@ -115,74 +111,67 @@ From `torch_product/`:
 export PROJECT_ID=project-688a4c78-5d5b-45b3-b5d
 export REGION=us-central1
 export INSTANCE_CONN=project-688a4c78-5d5b-45b3-b5d:us-central1:torch-db
-export IMAGE=us-central1-docker.pkg.dev/${PROJECT_ID}/torch/backend:vN   # bump N each time(Current latest is v7, check before writing: https://console.cloud.google.com/artifacts/docker/project-688a4c78-5d5b-45b3-b5d/us-central1/torch/backend?project=project-688a4c78-5d5b-45b3-b5d&rapt=AEjHL4PgVGOyPb7c-HlNBrclq0TVMZAQMI09_KspZ6YCTUOqSIDUf1J5v2fFwfiGjkFGWs9x-9F7Jk3udSTjNnKgFLIFiZQpxrci2OtL09TF-hZvY7haFHM)
+export IMAGE=us-central1-docker.pkg.dev/${PROJECT_ID}/torch/backend:vN   # bump N each time
 
 gcloud builds submit --config=cloudbuild.yaml --substitutions=_IMAGE=$IMAGE .
 bash backend/deploy.sh
 curl https://torch-backend-746208330214.us-central1.run.app/api/health
 ```
 
-Rebuild only when `backend/src/**`, `backend/package.json`, the Dockerfile, the Prisma schema, or `packages/tea-core/**` changed. Otherwise it's not needed.
+Rebuild only when `backend/src/**`, `backend/package.json`, the Dockerfile, the Prisma schema, or `packages/tea-core/**` changed.
 
 ### Frontend deploys
 
-Vercel auto-builds on push to the watched branch. No GCP work. The single env var that ties it to the backend is `NEXT_PUBLIC_BACKEND_URL` in the Vercel project settings.
+Vercel auto-builds on push to `main`. No GCP work needed. The single env var that ties it to the backend is `NEXT_PUBLIC_BACKEND_URL` in Vercel project settings.
 
 ## What's done
 
-- [x] Frontend deployed to Vercel
+- [x] Frontend live at `torch.lemnisca.bio`
 - [x] Cloud SQL Postgres 16 provisioned (`torch-db`, `db-f1-micro`, daily backups at 03:00)
 - [x] Secret Manager holding `DATABASE_URL` and `JWT_SECRET`
 - [x] Artifact Registry repo `torch` in `us-central1`
-- [x] Cloud Build wired via `cloudbuild.yaml` + `.gcloudignore`
-- [x] Backend image built and deployed to Cloud Run as `torch-backend`
-- [x] Prisma migrations applied to Cloud SQL via Cloud SQL Auth Proxy
-- [x] Public invocation (`allUsers → roles/run.invoker`)
-- [x] CORS allowlist points at the Vercel URL
-- [x] Frontend `NEXT_PUBLIC_BACKEND_URL` set to Cloud Run URL
-- [x] End-to-end signup / login / assess flow works in production
-- [x] Auth via JWT (bcrypt) — no Firebase yet, deliberately
-- [x] `tea-core` engine includes new `estimate_mu` OUR mode (µ-based, gated to species with Y_X/O₂ data)
-- [x] Frontend wires the new mode through schema, mapper, and Step 4 UI
-- [x] Scale-dependent input limits in Step 3 wired up. `tea-core-shared` exports `SCALEUP_OPERATING_RANGES` (binned by volume: 1, 10, 100, 1k, 10k L) plus `getScaleupOperatingRange(v)` and `maxImpellersForGeometry(hd)`. Frontend reads them: VesselStep shows a per-scale max-RPM / max-VVM hint, schema enforces those maxes as hard errors at submit.
-- [x] **Engine split into private (backend-only) and public (shared) packages.** `tea-core-shared` carries types, bounds, defaults, the scale-up envelope, the what-if modification catalog and conflict pairs, and the OD→CDW table — all safe to bundle into the frontend. `tea-core` carries the math: `runAssessment`, `runWhatIf`, organism kinetics, correlations, scoring rubrics, heat-transfer correlations. Frontend imports only from `tea-core-shared`; engine code physically cannot leak into the static bundle.
-- [x] **`runAssessment` moved server-side.** Backend exposes `POST /api/assessments/preview` (compute, no save), `/save` (compute + persist, authed), `/whatif` (apply modifications). Frontend calls these instead of running math in the browser.
-- [x] **What-if analysis fully wired.** Per-domain modification buttons filtered by the catalog's `domains` array, conflict pairs auto-deselect on toggle, at-limit heuristic dims unusable buttons, current → target value hints under each button. Continuous knobs (Inlet O₂ and feed-frequency stepper) drive the engine's `oxygen_level` / `feed_frequency` params. Target Scale column shows inline `original → modified` with the recomputed risk badge. "Changes Applied" summary uses `modified_inputs` from the engine; primary-bottleneck shifts are surfaced; what-if-only flags display in a callout.
-- [x] **Scale-Up Projections** uses real ensemble min/max for kLa and mixing time (engine surfaces `kla_ensemble.{min,max}` and `theta_mix_*_{min,max}`). Adaptive precision: integers for large values, decimals only for sub-unit ones.
+- [x] Cloud Build wired via `cloudbuild.yaml`
+- [x] Backend deployed to Cloud Run as `torch-backend` (current: v10)
+- [x] CORS set to `https://torch.lemnisca.bio`
+- [x] Billing budget alert configured
+- [x] Rate limiting: 2000 req/15min global, 100 req/15min on `/api/auth/*`
+- [x] End-to-end signup / login / assess / results flow
+- [x] Auth via JWT (bcrypt)
+- [x] Engine split: `tea-core` (backend-only math) + `tea-core-shared` (public surface)
+- [x] `runAssessment` + `runWhatIf` server-side only
+- [x] What-if analysis fully wired across all five domains
+- [x] Scale-dependent input limits in Step 3
+- [x] `estimate_mu` OUR mode (µ-based, gated to supported species)
+- [x] PDF generation: `POST /api/assessments/:id/pdf` renders HTML template via Puppeteer, streams PDF to client. `@react-pdf/renderer` removed.
+- [x] PDF preview modal: click "Download PDF Report" → modal opens with loading spinner → inline iframe preview → "Save to disk" button.
+- [x] MOSCH report template redesigned to mirror results dashboard (radar SVGs, domain cards, lab/target score columns, Lab→Pilot→Production projections table, Lemnisca platform footer).
+- [x] Unauthenticated assessment preview saved to DB on sign-in (not lost)
 
 ## What's left
 
-### Next up
-- **PDF / report generation.** Separate Cloud Run worker (Playwright/Puppeteer) + Cloud Tasks queue + Cloud Storage bucket. Client-side `PdfReport.tsx` exists but is not wired up. ~2 days of work.
-- **Structured logging + Cloud Trace.** `pino` for JSON logs, Cloud Trace for per-request latency. After PDF pipeline.
+- **Structured logging + Cloud Trace** — `pino` for JSON logs, Cloud Trace for per-request latency. ~30 min for logging.
 
-### Done
-- [x] Billing budget alert — configured in GCP console.
-- [x] Rate limiting — `express-rate-limit` active: 100 req/15min global, 5/min on `/api/auth/*`.
-- [x] Frontend live at `torch.lemnisca.bio`.
-- [x] CORS set to `https://torch.lemnisca.bio` (no trailing slash).
-
-### Explicit no
-- **Custom domain for backend** — current GCP URL is fine.
-- **CI/CD automation** — manual deploy workflow preferred.
-- **Firebase Auth** — current bcrypt+JWT works fine.
-- **CORS regex for Vercel preview URLs** — Vercel redirects to `torch.lemnisca.bio`, not needed.
+### Explicit no (decided, not forgotten)
+- Custom domain for backend — current GCP URL is fine
+- CI/CD automation — manual deploy workflow preferred
+- Firebase Auth — current bcrypt+JWT works fine
 
 ## Approximate monthly cost at idle
 
-~$8/month, almost entirely Cloud SQL (which can't scale to zero). Cloud Run, Artifact Registry, Secret Manager, Cloud Build, Cloud Logging all sit at ~$0 under our usage. Traffic-driven costs grow from there but won't matter at our user scale for a while.
+~$8/month, almost entirely Cloud SQL. Cloud Run, Artifact Registry, Secret Manager, Cloud Build all sit at ~$0 under current usage.
 
 ## Pointers
 
 | Question | Where |
 |---|---|
-| How do I redeploy the backend? | [docs/backend-deploy-report.html](torch_product/docs/backend-deploy-report.html), §"Redeploying after code changes" |
-| Why is Cloud SQL always on? | Same doc, §"Living with the deploy" |
-| Where does the math live? | `torch_product/packages/tea-core/src/engine/` (backend-only) |
-| Where are the risk thresholds? | `torch_product/packages/tea-core/src/constants/scoring.ts` (backend-only) |
-| Where are the input bounds? | `torch_product/packages/tea-core-shared/src/constants/input_bounds.ts` (flat) + `scaleup_operating_ranges.ts` (scale-binned RPM / VVM / P/V envelopes). Both public. |
-| Where is the what-if catalog? | `torch_product/packages/tea-core-shared/src/constants/whatif.ts` (modification labels, domain mapping, conflict pairs, stepper helpers). Public. |
-| Where is the what-if engine? | `torch_product/packages/tea-core/src/engine/whatif/` — `runWhatIf`, `applyModifications`, `canApplyModification`. Backend-only. |
+| How do I redeploy? | [docs/backend-deploy-report.html](torch_product/docs/backend-deploy-report.html) §"Redeploying after code changes" |
+| GCP runtime values, last verified state, working preferences | [HANDOFF.md](HANDOFF.md) |
+| Why is Cloud SQL always on? | deploy-report HTML §"Living with the deploy" |
+| Where does the math live? | `torch_product/packages/tea-core/src/engine/` |
+| Where are the risk thresholds? | `torch_product/packages/tea-core/src/constants/scoring.ts` |
+| Where are the input bounds? | `torch_product/packages/tea-core-shared/src/constants/input_bounds.ts` |
+| Where is the what-if catalog? | `torch_product/packages/tea-core-shared/src/constants/whatif.ts` |
 | Where is the API contract? | `torch_product/backend/src/routes/` + controllers |
 | Where is the DB schema? | `torch_product/backend/prisma/schema.prisma` |
+| Where is the PDF template? | `torch_product/backend/src/templates/report.template.ts` |
 | App-level layout, local dev specifics | `torch_product/README.md` |
