@@ -180,7 +180,7 @@ function coverPage(inputs: ProcessInputs, date: string): string {
     <div class="cover-middle">
       <p class="cover-eyebrow">Scale-Up Risk Assessment</p>
       <h1 class="cover-title">MOSCH<span class="cover-title-dot">.</span></h1>
-      <p class="cover-subtitle">Mixing · Oxygen · Shear · CO₂ · Heat</p>
+      <p class="cover-subtitle">Mixing · Oxygen · Shear · CO<sub>2</sub> · Heat</p>
     </div>
 
     <div class="cover-data">
@@ -241,7 +241,7 @@ function summaryPage(inputs: ProcessInputs, r: PartialAssessmentResult): string 
     { letter: "M", name: "Mixing",          score: r.mixing.score, metric: `Score ${fmt(r.mixing.process_mixing_ratio_target, 1)}` },
     { letter: "O", name: "Oxygen Transfer", score: r.otr.score,    metric: `OTR/OUR ${fmt(r.otr.otr_our_ratio_target ?? r.otr.kla_ratio, 2)}` },
     { letter: "S", name: "Shear Stress",    score: r.shear.score,  metric: `v_threshold/v_tip ${fmt(r.shear.tip_speed_margin, 1)}` },
-    { letter: "C", name: "CO₂ Accumulation",score: r.co2.score,    metric: r.co2.activated ? `Score ${fmt(r.co2.target?.pco2_margin ?? r.co2.pco2_margin, 1)}` : "Not activated" },
+    { letter: "C", name: "CO<sub>2</sub> Accumulation",score: r.co2.score,    metric: r.co2.activated ? `Score ${fmt(r.co2.target?.pco2_margin ?? r.co2.pco2_margin, 1)}` : "Not activated" },
     { letter: "H", name: "Heat Removal",    score: r.heat.score,   metric: `Score ${fmt(r.heat.target?.heat_transfer_margin ?? r.heat.heat_transfer_margin, 1)}` },
   ];
 
@@ -432,10 +432,10 @@ function buildDomainSpecs(r: PartialAssessmentResult): DomainSpec[] {
       ],
     },
     {
-      letter: "C", name: "CO₂ Accumulation", score: r.co2.score,
+      letter: "C", name: "CO<sub>2</sub> Accumulation", score: r.co2.score,
       confidence: r.co2.confidence, driver: r.co2.driver,
-      question: "Is dissolved CO₂ low enough to avoid toxicity?",
-      formula: "P_CO₂_threshold / P_CO₂_reactor",
+      question: "Is dissolved CO<sub>2</sub> low enough to avoid toxicity?",
+      formula: "P_CO<sub>2</sub>_threshold / P_CO<sub>2</sub>_reactor",
       thresholds: [
         { label: "low", range: "> 1.5" },
         { label: "moderate", range: "1.0 – 1.5" },
@@ -448,11 +448,11 @@ function buildDomainSpecs(r: PartialAssessmentResult): DomainSpec[] {
       targetScore: r.co2.target?.score ?? r.co2.score,
       metrics: r.co2.activated
         ? [
-            { label: "pCO₂ — lab",    value: fmt(r.co2.lab?.pco2_bottom, 3, "bar") },
-            { label: "pCO₂ — target", value: fmt(r.co2.target?.pco2_bottom ?? r.co2.pco2_bottom, 3, "bar") },
+            { label: "pCO<sub>2</sub> — lab",    value: fmt(r.co2.lab?.pco2_bottom, 3, "bar") },
+            { label: "pCO<sub>2</sub> — target", value: fmt(r.co2.target?.pco2_bottom ?? r.co2.pco2_bottom, 3, "bar") },
             { label: "Threshold",     value: fmt(r.co2.pco2_critical, 3, "bar") },
           ]
-        : [{ label: "Status", value: "Not activated — OUR below CO₂ stripping limit" }],
+        : [{ label: "Status", value: "Not activated — OUR below CO<sub>2</sub> stripping limit" }],
     },
     {
       letter: "H", name: "Heat Removal", score: r.heat.score,
@@ -548,7 +548,7 @@ function projectionsSection(inputs: ProcessInputs, r: PartialAssessmentResult): 
       target: fmtAuto(r.shear.tip_speed),
     },
     {
-      label: "pCO₂ at bottom (bar)",
+      label: "pCO<sub>2</sub> at bottom (bar)",
       lab: fmtAuto(labPco2),
       pilot: fmtAuto(midNumber(labPco2, targetPco2)),
       target: fmtAuto(targetPco2),
@@ -733,6 +733,11 @@ html, body {
 /* ─── Page-break utilities ──────────────────────────────────────────────── */
 .break-before { page-break-before: always; break-before: page; }
 .no-break { page-break-inside: avoid; break-inside: avoid; }
+
+/* ─── Subscripts / superscripts ─────────────────────────────────────────── */
+sub, sup { font-size: 0.72em; line-height: 0; position: relative; vertical-align: baseline; }
+sub { top: 0.32em; }
+sup { top: -0.45em; }
 
 /* ─── Typography ────────────────────────────────────────────────────────── */
 .display-2 {
