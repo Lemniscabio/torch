@@ -53,12 +53,12 @@ export function ProcessStep() {
     <div className="grid max-w-[760px] gap-8">
       {/* ── Biomass ──────────────────────────────────────────────────── */}
       <Field
-        label="Peak biomass"
+        label="Peak biomass concentration"
         htmlFor="biomass_cdw_g_l"
         hint={
           biomassMode === 'od' && cdwEquivalent !== null
-            ? `≈ ${cdwEquivalent.toFixed(2)} g/L CDW — using ${odFactor.toFixed(2)} g/L·OD⁻¹ for ${species}`
-            : 'Cell dry weight at the highest oxygen demand.'
+            ? `≈ ${cdwEquivalent.toFixed(2)} g/L CDW`
+            : 'Cell dry weight per litre at the highest oxygen demand.'
         }
         error={errors.biomass_cdw_g_l?.message}
       >
@@ -94,7 +94,7 @@ export function ProcessStep() {
         <div className="grid gap-2 sm:grid-cols-3">
           <OurCard
             title="I have measured OUR"
-            description="Highest confidence — upgrades all domains."
+            description="Highest confidence"
             selected={ourMode === 'measured'}
             onSelect={() => setValue('our_mode', 'measured', {
               shouldDirty: true,
@@ -104,7 +104,7 @@ export function ProcessStep() {
           />
           <OurCard
             title="Estimate from specific growth rate (µ)"
-            description="Directional confidence for four domains."
+            description="Directional confidence"
             selected={ourMode === 'estimate_mu'}
             disabled={isOtherOrganism}
             onSelect={() => setValue('our_mode', 'estimate_mu', {
@@ -115,7 +115,7 @@ export function ProcessStep() {
           />
           <OurCard
             title="Estimate from physiology"
-            description="Directional confidence for four domains."
+            description="Directional confidence"
             selected={ourMode === 'estimate'}
             disabled={isOtherOrganism}
             onSelect={() => setValue('our_mode', 'estimate', {
@@ -199,7 +199,7 @@ export function ProcessStep() {
       <Field
         label="Inlet O₂ enrichment"
         htmlFor="o2_inlet"
-        hint="Air = 20.9%. Raise for enriched sparging."
+        hint="Raise for enriched sparging."
         error={errors.o2_inlet?.message}
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -234,7 +234,7 @@ export function ProcessStep() {
             />
           </Field>
           <Field
-            label="Cooling utility inlet"
+            label="Cooling utility inlet temperature"
             htmlFor="t_cw_inlet"
             error={errors.t_cw_inlet?.message}
           >

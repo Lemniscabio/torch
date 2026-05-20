@@ -32,7 +32,7 @@ export const SCALEUP_OPERATING_RANGES: ScaleupOperatingRange[] = [
     max_pv_kw_m3: { min: 0.01, max: 8 },
     max_pv_w_m3:  { min: 10,   max: 8000 },
     // Lower: gentle CHO/stem cell (~60 rpm); Upper: microbial
-    max_rpm: { min: 60, max: 1200 },
+    max_rpm: { min: 60, max: 1800 },
     // Lower: cell culture CO2 stripping minimum; Upper: microbial
     max_aeration_vvm: { min: 0.01, max: 2.0 },
   },
@@ -43,7 +43,7 @@ export const SCALEUP_OPERATING_RANGES: ScaleupOperatingRange[] = [
     volume_max_l: Math.sqrt(1000),
     max_pv_kw_m3: { min: 0.01, max: 6 },
     max_pv_w_m3:  { min: 10,   max: 6000 },
-    max_rpm: { min: 50, max: 900 },
+    max_rpm: { min: 50, max: 1200 },
     max_aeration_vvm: { min: 0.01, max: 1.5 },
   },
   {
