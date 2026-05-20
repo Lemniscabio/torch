@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { getToken } from '@/lib/api';
 
 const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000').replace(/\/$/, '');
@@ -76,7 +77,7 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
         Download PDF Report
       </button>
 
-      {open ? (
+      {open && typeof document !== 'undefined' ? createPortal((
         <div
           role="dialog"
           aria-modal="true"
@@ -156,7 +157,7 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
             </div>
           </div>
         </div>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }
