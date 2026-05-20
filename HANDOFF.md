@@ -37,20 +37,6 @@ Both packages compile to `dist/` (CommonJS, generated on install). The frontend 
 
 The frontend never runs `runAssessment` or `runWhatIf` directly. If you see those imports in the frontend, something regressed.
 
-## Open issues (resolve before claiming everything works)
-
-### 1. React hydration mismatch on the assess wizard (may still apply)
-Manifests as "Hydration failed because the server rendered HTML didn't match the client" on `/assess`. Diff in inspector points at `aria-checked` on a radio in Step 3.
-
-Suspected root cause: wizard form state restored from a client-only source (localStorage / sessionStorage / URL params) *after* hydration, so the first server render and first client render disagree on selected radio options.
-
-Diagnosis steps:
-- Repro locally: `cd torch_product/frontend && npm run dev`, open `http://localhost:3001/assess`.
-- Confirm whether the error appears on first-visit (no saved state) vs. after navigating through a few steps (state in storage).
-- Likely fix patterns: mount-guard on the assess shell (`useEffect → setMounted(true); if (!mounted) return null`), or move form-state restoration into a `useEffect` so SSR always sees empty defaults.
-
-Status unconfirmed at last update — may have been resolved incidentally by other changes; verify before debugging.
-
 ## Ephemeral runtime values
 
 Most of what you need for GCP commands lives either in `cloudbuild.yaml`, `backend/deploy.sh`, or the deploy-report HTML. Re-export these in any new shell:
@@ -63,8 +49,8 @@ export IMAGE=us-central1-docker.pkg.dev/${PROJECT_ID}/torch/backend:vN  # bump N
 ```
 
 **Cloud Run service:** `torch-backend` (region `us-central1`)
-**Service URL (no custom domain yet):** `https://torch-backend-746208330214.us-central1.run.app`
-**Frontend URL:** `https://torch-snowy.vercel.app`
+**Service URL:** `https://torch-backend-746208330214.us-central1.run.app`
+**Frontend URL:** `https://torch.lemnisca.bio`
 **Artifact Registry repo:** `torch` in `us-central1` (path: `us-central1-docker.pkg.dev/<project>/torch/backend`)
 **Cloud SQL instance:** `torch-db`, Postgres 16, `db-f1-micro`, single-zone, daily backups at 03:00
 **Secrets:** `torch-database-url`, `torch-jwt-secret` (both in Secret Manager, project-scoped)
@@ -92,17 +78,39 @@ The two cases that are easy to forget:
 - Run commands themselves; do not invoke `gcloud` from this tool.
 - Prefer terse answers and direct commands over long explanations, unless the user asks for the rationale.
 - Be explicit about *why* anything risky or hard-to-reverse is being done before doing it.
+- No GitHub Actions. No Firebase Auth. No custom domain (current GCP URL is fine).
+- No CI/CD automation for now — manual `gcloud builds submit` + `bash deploy.sh`.
 
 ## Last verified state
 
-- **Backend:** Cloud Run service `torch-backend` at image tag `v6` (or higher — check `gcloud run services describe`). `/api/health` returns 200. Endpoints: `/api/assessments/preview`, `/save`, `/whatif`, plus the original CRUD routes.
-- **Frontend:** deployed on Vercel at `torch-snowy.vercel.app`, hitting the Cloud Run URL via `NEXT_PUBLIC_BACKEND_URL`.
-- **Database:** `torch` DB on `torch-db` instance, single applied migration (`20260516010618_init`). User + Assessment tables exist; no real user data yet (test data only).
-- **Last big architectural change:** engine split into `tea-core` (private) + `tea-core-shared` (public), `runAssessment` moved server-side, what-if analysis fully wired through both packages. See `git log --oneline` for the exact commits.
+- **Backend:** Cloud Run service `torch-backend` at image tag `v7`. `/api/health` returns 200. Rate limiting active (100 req/15min global, 5/min on `/api/auth/*`).
+- **Frontend:** deployed on Vercel at `torch.lemnisca.bio`, hitting the Cloud Run URL via `NEXT_PUBLIC_BACKEND_URL`.
+- **Database:** `torch` DB on `torch-db` instance, single applied migration (`20260516010618_init`). User + Assessment tables exist.
+- **CORS:** `FRONTEND_URL=https://torch.lemnisca.bio` (no trailing slash) set in Cloud Run env.
+- **Billing budget alert:** configured in GCP console.
 
-## What's left (high level — full list in root README)
+## Backlog — pending work with plans
 
-Must-do: billing budget alert on the GCP project.
-Should-do: custom domain (`api.torch.lemnisca.bio`), rate limiting (`express-rate-limit`), CI/CD on push.
-Nice-to-have: Firebase Auth swap, structured logging.
-Deferred by user: PDF / report generation pipeline (Cloud Run worker + Cloud Tasks + Cloud Storage).
+### Next up
+
+#### PDF / report generation
+User confirmed the reason is **server-side rendering for consistency**. Plan:
+- Cloud Storage bucket `torch-reports`
+- Cloud Tasks queue `report-generation`
+- Separate Cloud Run service `torch-pdf-worker` with Playwright/Puppeteer; renders HTML template → PDF → uploads to GCS → updates DB
+- New `Report` Prisma model (id, assessment_id, status, url, created_at)
+- API: `POST /api/reports` (enqueue), `GET /api/reports/:id` (status polling)
+- Frontend: replace client-side compute in `GeneratePdfButton` with enqueue → poll → download
+- ~2 days of work. Multiple deploys.
+
+#### Structured logging + Cloud Trace
+After PDF pipeline. `pino` for JSON logs (Cloud Logging parses automatically), Cloud Trace SDK for per-request latency. ~30 min for logging, longer for Trace.
+
+### Deferred / explicit no
+
+- **Firebase Auth** — current bcrypt+JWT works fine. Not doing.
+- **Custom domain for backend** — current GCP URL (`torch-backend-746208330214.us-central1.run.app`) is fine. Not doing.
+- **CI/CD on git push** — manual deploy workflow preferred. Not doing.
+- **CORS regex for Vercel preview URLs** — Vercel redirects to `torch.lemnisca.bio`, not an issue. Not doing.
+- **Re-enable Design section** in what-if (`DomainDetail.tsx`) — deferred, may revisit.
+- **Fed-batch feed frequency stepper** end-to-end test — not a current priority.

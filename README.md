@@ -152,22 +152,21 @@ Vercel auto-builds on push to the watched branch. No GCP work. The single env va
 
 ## What's left
 
-### Must-do before going wider
-- **Billing budget alert.** Three minutes in the GCP console. Catches runaway costs from bugs/abuse.
+### Next up
+- **PDF / report generation.** Separate Cloud Run worker (Playwright/Puppeteer) + Cloud Tasks queue + Cloud Storage bucket. Client-side `PdfReport.tsx` exists but is not wired up. ~2 days of work.
+- **Structured logging + Cloud Trace.** `pino` for JSON logs, Cloud Trace for per-request latency. After PDF pipeline.
 
-### Should-do soon
-- **Custom domain** — `api.torch.lemnisca.bio` → Cloud Run, `torch.lemnisca.bio` → Vercel. Requires DNS access at lemnisca.bio.
-- **Rate limiting.** Cloud Run doesn't throttle by itself. Either `express-rate-limit` middleware or Cloud Armor.
-- **CI/CD.** Auto-rebuild + redeploy on `git push` — either a Cloud Build trigger or a GitHub Action. Right now it's manual `gcloud builds submit`.
-- **CORS regex** for Vercel preview URLs (`torch-snowy-<hash>.vercel.app`) — currently only the production URL is allowed.
+### Done
+- [x] Billing budget alert — configured in GCP console.
+- [x] Rate limiting — `express-rate-limit` active: 100 req/15min global, 5/min on `/api/auth/*`.
+- [x] Frontend live at `torch.lemnisca.bio`.
+- [x] CORS set to `https://torch.lemnisca.bio` (no trailing slash).
 
-### Nice-to-have / future
-- **Firebase Auth** replacing the current bcrypt+JWT setup. Architecture plan called for it; current setup works fine, migration is a separate workstream.
-- **Structured logging** (`pino`) instead of `console.log`.
-- **Cloud Trace** for request-level performance breakdown.
-
-### Explicitly deferred
-- **PDF / report generation.** Will be a separate Cloud Run worker behind Cloud Tasks, writing PDFs to Cloud Storage. None of that infrastructure exists yet.
+### Explicit no
+- **Custom domain for backend** — current GCP URL is fine.
+- **CI/CD automation** — manual deploy workflow preferred.
+- **Firebase Auth** — current bcrypt+JWT works fine.
+- **CORS regex for Vercel preview URLs** — Vercel redirects to `torch.lemnisca.bio`, not needed.
 
 ## Approximate monthly cost at idle
 

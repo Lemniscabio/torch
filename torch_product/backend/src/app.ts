@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { rateLimit } from "express-rate-limit";
 import { env } from "./config/env";
 import { errorHandler } from "./middlewares/error.middleware";
 import authRoutes from "./routes/auth.route";
@@ -8,9 +9,32 @@ import userRoutes from "./routes/user.route";
 
 const app = express();
 
+// Trust Cloud Run's X-Forwarded-For so rate limiter sees real client IP
+app.set("trust proxy", 1);
+
 // Middleware
 app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
 app.use(express.json());
+
+// Rate limiting
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 2000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later." },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many auth attempts, please try again later." },
+});
+
+app.use(globalLimiter);
+app.use("/api/auth", authLimiter);
 
 // Routes
 app.use("/api/auth", authRoutes);
