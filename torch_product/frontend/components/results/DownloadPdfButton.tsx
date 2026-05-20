@@ -52,21 +52,18 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
         const url = URL.createObjectURL(blob);
         setBlobUrl(url);
         setState('ready');
+        // Auto-save to local disk as soon as the PDF arrives.
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
       })
       .catch(() => {
         setState('error');
       });
   }, [open, assessmentId]);
-
-  function save() {
-    if (!blobUrl) return;
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
 
   return (
     <>
@@ -112,26 +109,14 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
               <p className="text-[14px] font-semibold" style={{ color: 'var(--color-ink-800)' }}>
                 PDF Report
               </p>
-              <div className="flex items-center gap-3">
-                {state === 'ready' ? (
-                  <button
-                    type="button"
-                    onClick={save}
-                    className="btn btn-flame"
-                    style={{ padding: '6px 16px', fontSize: 13 }}
-                  >
-                    Save to disk
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="btn btn-ghost"
-                  style={{ padding: '6px 14px', fontSize: 13 }}
-                >
-                  Close
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="btn btn-ghost"
+                style={{ padding: '6px 14px', fontSize: 13 }}
+              >
+                Close
+              </button>
             </div>
 
             {/* body */}

@@ -8,6 +8,10 @@ frontend/out/
 # backend build
 torch_product/backend/dist/
 
+# local PDF preview tooling
+torch_product/preview-report.html
+torch_product/preview-report.mjs
+
 # packages build outputs (tea-core, tea-core-shared compile to dist/)
 torch_product/packages/*/dist/
 
