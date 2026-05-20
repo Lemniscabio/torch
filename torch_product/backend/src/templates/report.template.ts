@@ -594,77 +594,15 @@ function projectionsSection(inputs: ProcessInputs, r: PartialAssessmentResult): 
       <tbody>${body}</tbody>
     </table>
 
+    ${platformFooter()}
   </section>`;
 }
 
-// ─── Methodology + Platform page ─────────────────────────────────────────────
+// ─── Platform footer block (appended to projections page) ───────────────────
 
-function methodologyPage(inputs: ProcessInputs, _r: PartialAssessmentResult): string {
-  const ourMeasured = inputs.our_mode === "measured";
-
-  const provenance = [
-    { label: "Organism",                       value: "Provided" },
-    { label: "Scale (lab / target)",           value: "Provided" },
-    { label: "Geometry (H/D, D/T, impeller)",  value: "Provided · defaults applied where omitted" },
-    { label: "Operating (RPM, VVM, DO)",       value: "Provided · defaults applied where omitted" },
-    { label: "OUR (peak)",                     value: ourMeasured ? "Measured · high confidence" : "Estimated from biomass × species kinetics" },
-    { label: "Thermal (temperature, CW)",      value: "Provided" },
-  ];
-
-  const assumptions = [
-    "kLa is estimated using a van't Riet ensemble. Intrinsic uncertainty is ±30–40%.",
-    inputs.impeller_type === "unknown"
-      ? "Impeller type was not specified; calculations assume Rushton geometry."
-      : "Mixing time is blended across Ruszkowski, Cooke, and Grenville-Nienow ensembles.",
-    ourMeasured
-      ? "OUR is user-measured; downstream margins inherit this value directly."
-      : "OUR is estimated from biomass × species. A measured value would tighten all domains except shear.",
-  ];
-
+function platformFooter(): string {
   return `
-  <section class="section break-before">
-    ${runningHead(inputs)}
-    ${eyebrow("Section 04 · Methodology")}
-    <h2 class="display-2">How this was computed</h2>
-
-    <div class="grid-two no-break" style="margin-top:32px">
-      <div>
-        ${eyebrow("Input provenance")}
-        <table class="meth-table">
-          ${provenance.map(p => `
-          <tr>
-            <td class="meth-label">${p.label}</td>
-            <td class="meth-value">${p.value}</td>
-          </tr>`).join("")}
-        </table>
-      </div>
-
-      <div>
-        ${eyebrow("Key assumptions")}
-        <ol class="assumptions">
-          ${assumptions.map(a => `<li>${a}</li>`).join("")}
-        </ol>
-
-        <div class="next-measurement">
-          ${eyebrow("Highest-leverage next measurement")}
-          <p>${ourMeasured
-            ? "Pilot kLa measurement at intermediate volume to validate the scale-up envelope."
-            : "A direct OUR measurement at peak biomass — upgrades every domain except shear."}</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="scope-note no-break">
-      ${eyebrow("Scope & limitations")}
-      <p>
-        This report uses empirical correlations with ±30–40% uncertainty on kLa and ±15–20% on heat transfer.
-        Risk categories indicate the magnitude of attention each domain requires — not absolute pass/fail.
-        Yield, product titer, and product-specific cell-damage thresholds are outside the scope.
-        Results complement but do not replace pilot experimentation.
-      </p>
-    </div>
-
-    <div class="platform no-break">
+    <div class="platform no-break" style="margin-top:36px">
       ${eyebrow("Lemnisca Platform")}
       <div class="platform-grid">
         <div class="platform-card">
@@ -683,9 +621,7 @@ function methodologyPage(inputs: ProcessInputs, _r: PartialAssessmentResult): st
           <p class="platform-url">https://www.lemnisca.bio/thrust</p>
         </div>
       </div>
-    </div>
-
-  </section>`;
+    </div>`;
 }
 
 // ─── Page chrome ─────────────────────────────────────────────────────────────
@@ -1254,7 +1190,6 @@ ${coverPage(inputs, date)}
 ${summaryPage(inputs, results)}
 ${domainsSection(inputs, results)}
 ${projectionsSection(inputs, results)}
-${methodologyPage(inputs, results)}
 </body>
 </html>`;
 }
