@@ -307,6 +307,16 @@ input[type="number"]::-webkit-inner-spin-button {
   border-color: var(--color-results-accent-hover);
 }
 
+.pdf-spinner {
+  animation: pdf-spinner-rotate 0.8s linear infinite;
+  color: var(--color-ink-900);
+  transform-origin: center;
+}
+
+@keyframes pdf-spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
 /* ── Glass surfaces — nav / bottom bar ── */
 .glass-surface {
   backdrop-filter: blur(20px) saturate(180%);

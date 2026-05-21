@@ -169,17 +169,17 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
 function Spinner() {
   return (
     <svg
+      className="pdf-spinner"
       width="28"
       height="28"
       viewBox="0 0 28 28"
       fill="none"
-      style={{ animation: 'spin 0.8s linear infinite' }}
+      aria-hidden
     >
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <circle cx="14" cy="14" r="11" stroke="var(--color-rule-strong)" strokeWidth="3" />
       <path
         d="M14 3 A11 11 0 0 1 25 14"
-        stroke="var(--color-ink-950)"
+        stroke="currentColor"
         strokeWidth="3"
         strokeLinecap="round"
       />
