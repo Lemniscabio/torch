@@ -250,9 +250,7 @@ function AssessHeaderPlaceholder() {
 
 function AssessRouter() {
   const auth = useAuth();
-  const search = useSearchParams();
-  const raw = search?.get('step') ?? 'identity';
-  const current = (STEPS.find((s) => s.slug === raw)?.slug ?? 'identity') as StepSlug;
+  const current = useAssessmentStep();
   const meta = STEP_META[current];
   const startedRef = useRef(false);
 
@@ -310,8 +308,8 @@ function StepActions({ slug }: { slug: StepSlug }) {
   }, [slug]);
 
   const goBack = useCallback(() => {
-    if (prev) router.push(assessmentStepHref(prev));
-  }, [prev, router]);
+    if (prev) navigateAssessmentStep(prev);
+  }, [prev]);
 
   // Validate only the current step's slice against its dedicated schema.
   // Using the full-schema trigger() would fail on later-step blanks.
@@ -342,13 +340,13 @@ function StepActions({ slug }: { slug: StepSlug }) {
 
   const goNext = useCallback(() => {
     if (!validateCurrentStep()) return;
-    if (next) router.push(assessmentStepHref(next));
+    if (next) navigateAssessmentStep(next);
     captureEvent('assessment_step_completed', {
       auth_state: auth.status,
       step_slug: slug,
       step_index: stepIndex(slug) + 1,
     });
-  }, [auth.status, next, router, slug, validateCurrentStep]);
+  }, [auth.status, next, slug, validateCurrentStep]);
 
   const runAndSave = useCallback(async () => {
     setSubmitError(null);
@@ -457,6 +455,38 @@ function StepActions({ slug }: { slug: StepSlug }) {
       errorSummary={stepError}
     />
   );
+}
+
+const ASSESS_STEP_CHANGE_EVENT = 'torch-assess-step-change';
+
+function useAssessmentStep(): StepSlug {
+  const [step, setStep] = useState<StepSlug>(() => readAssessmentStepFromLocation());
+
+  useEffect(() => {
+    const syncStep = () => setStep(readAssessmentStepFromLocation());
+    syncStep();
+    window.addEventListener('popstate', syncStep);
+    window.addEventListener(ASSESS_STEP_CHANGE_EVENT, syncStep);
+    return () => {
+      window.removeEventListener('popstate', syncStep);
+      window.removeEventListener(ASSESS_STEP_CHANGE_EVENT, syncStep);
+    };
+  }, []);
+
+  return step;
+}
+
+function readAssessmentStepFromLocation(): StepSlug {
+  if (typeof window === 'undefined') return 'identity';
+  const raw = new URLSearchParams(window.location.search).get('step') ?? 'identity';
+  return (STEPS.find((s) => s.slug === raw)?.slug ?? 'identity') as StepSlug;
+}
+
+function navigateAssessmentStep(step: StepSlug) {
+  if (typeof window === 'undefined') return;
+  window.history.pushState(null, '', assessmentStepHref(step));
+  window.dispatchEvent(new Event(ASSESS_STEP_CHANGE_EVENT));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function assessmentStepHref(step: StepSlug) {
