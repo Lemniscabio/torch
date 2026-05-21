@@ -89,8 +89,11 @@ The system is shaped to deploy as two completely separate services:
   HTML/JS/CSS. Vercel serves it from its CDN as static files — **zero
   serverless function invocations per request**. The frontend is a SPA.
   Set `NEXT_PUBLIC_BACKEND_URL=https://api.torch.lemnisca.bio` and
-  `NEXT_PUBLIC_SITE_URL=https://torch.lemnisca.bio`. On Vercel: framework
-  preset = "Next.js", build command unchanged, output directory `out`.
+  `NEXT_PUBLIC_SITE_URL=https://torch.lemnisca.bio`. Set
+  `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST` to the same
+  PostHog project used by the Lemnisca landing site so marketing-to-product
+  attribution stays connected. On Vercel: framework preset = "Next.js",
+  build command unchanged, output directory `out`.
 - **Backend → Cloud Run**: Build with `docker build -f backend/Dockerfile .`
   *from the `torch_product/` directory* (the Dockerfile needs sibling access
   to `packages/tea-core`). Connect to Cloud SQL via the Unix socket path in

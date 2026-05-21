@@ -14,6 +14,7 @@ import {
   useState,
 } from 'react';
 import { api, clearToken, getToken, setToken, type ApiError } from './api';
+import { captureEvent, identifyUser, resetAnalytics } from './analytics';
 import type { SessionUser } from './schemas';
 
 type AuthState =
@@ -60,7 +61,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const me = await api<MeResponse>('/api/auth/me');
         if (!cancelled) {
-          setState({ status: 'authed', user: toSessionUser(me) });
+          const user = toSessionUser(me);
+          identifyUser(user);
+          setState({ status: 'authed', user });
         }
       } catch {
         clearToken();
@@ -80,7 +83,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password, action: 'login' }),
     });
     setToken(res.user.token);
-    setState({ status: 'authed', user: toSessionUser(res.user) });
+    const user = toSessionUser(res.user);
+    identifyUser(user);
+    captureEvent('user_signed_in');
+    setState({ status: 'authed', user });
   }, []);
 
   const signUp = useCallback(async (email: string, password: string) => {
@@ -90,11 +96,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password, action: 'signup' }),
     });
     setToken(res.user.token);
-    setState({ status: 'authed', user: toSessionUser(res.user) });
+    const user = toSessionUser(res.user);
+    identifyUser(user);
+    captureEvent('account_created');
+    setState({ status: 'authed', user });
   }, []);
 
   const signOut = useCallback(() => {
     clearToken();
+    resetAnalytics();
     setState({ status: 'guest', user: null });
   }, []);
 

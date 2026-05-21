@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getToken } from '@/lib/api';
+import { captureEvent } from '@/lib/analytics';
 
 const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000').replace(/\/$/, '');
 
@@ -22,6 +23,7 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
 
   function openModal() {
     if (disabled) return;
+    captureEvent('pdf_download_clicked', { has_assessment_id: Boolean(assessmentId) });
     setOpen(true);
     setState('loading');
     fetchedRef.current = false;
@@ -53,6 +55,7 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
         const url = URL.createObjectURL(blob);
         setBlobUrl(url);
         setState('ready');
+        captureEvent('pdf_download_completed', { has_assessment_id: Boolean(assessmentId) });
         // Auto-save to local disk as soon as the PDF arrives.
         const a = document.createElement('a');
         a.href = url;
@@ -63,6 +66,7 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
       })
       .catch(() => {
         setState('error');
+        captureEvent('pdf_download_failed', { has_assessment_id: Boolean(assessmentId) });
       });
   }, [open, assessmentId]);
 

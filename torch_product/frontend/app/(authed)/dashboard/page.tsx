@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, type ApiError } from '@/lib/api';
+import { captureEvent, riskProp } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth-context';
 import { speciesLabel, worstScore, relativeTime } from '@/lib/format';
 import { DOMAIN_ORDER, RISK_COLOR, type DomainKey } from '@/components/results/riskTokens';
@@ -30,6 +31,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (auth.status !== 'authed') return;
+    captureEvent('dashboard_viewed');
     let cancelled = false;
 
     api<{ assessments: AssessmentRow[] }>('/api/assessments')
@@ -47,10 +49,14 @@ export default function DashboardPage() {
 
   const handleDelete = useCallback(async (id: string) => {
     const previous = rows;
+    const deleted = rows?.find((r) => r.id === id) ?? null;
     setRows((current) => current?.filter((r) => r.id !== id) ?? null);
     setPendingDelete(null);
     try {
       await api(`/api/assessments/${id}`, { method: 'DELETE' });
+      if (deleted) {
+        captureEvent('assessment_deleted', riskProp(worstScore(deleted.results)));
+      }
     } catch {
       // Restore on failure so the user isn't left wondering.
       setRows(previous);

@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
+import { PostHogPageView } from '@/components/analytics/PostHogPageView';
+import { PostHogProvider } from '@/components/analytics/PostHogProvider';
 import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider } from '@/lib/theme-context';
 import '../styles/globals.css';
@@ -49,9 +51,12 @@ try {
         />
       </head>
       <body>
-        <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </ThemeProvider>
+        <PostHogProvider>
+          <PostHogPageView />
+          <ThemeProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </ThemeProvider>
+        </PostHogProvider>
       </body>
     </html>
   );

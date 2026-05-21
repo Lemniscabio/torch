@@ -32,6 +32,7 @@ import {
 } from '@/lib/assess-schema';
 import { clearDraft } from '@/lib/assess-storage';
 import { api, type ApiError } from '@/lib/api';
+import { assessmentProps, captureEvent } from '@/lib/analytics';
 
 const STEP_META: Record<StepSlug, { title: string; description?: string }> = {
   identity: {
@@ -248,10 +249,29 @@ function AssessHeaderPlaceholder() {
 }
 
 function AssessRouter() {
+  const auth = useAuth();
   const search = useSearchParams();
   const raw = search?.get('step') ?? 'identity';
   const current = (STEPS.find((s) => s.slug === raw)?.slug ?? 'identity') as StepSlug;
   const meta = STEP_META[current];
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    const step = stepIndex(current);
+    if (!startedRef.current) {
+      startedRef.current = true;
+      captureEvent('assessment_started', {
+        auth_state: auth.status,
+        step_slug: current,
+        step_index: step + 1,
+      });
+    }
+    captureEvent('assessment_step_viewed', {
+      auth_state: auth.status,
+      step_slug: current,
+      step_index: step + 1,
+    });
+  }, [auth.status, current]);
 
   return (
     <WizardShell current={current} title={meta.title} description={meta.description}>
@@ -297,6 +317,12 @@ function StepActions({ slug }: { slug: StepSlug }) {
     const result = schema.safeParse(values);
 
     if (!result.success) {
+      captureEvent('assessment_validation_failed', {
+        auth_state: auth.status,
+        step_slug: slug,
+        step_index: stepIndex(slug) + 1,
+        issue_count: result.error.issues.length,
+      });
       result.error.issues.forEach((issue) => {
         const path = issue.path[0] as keyof AssessFormValues | undefined;
         if (path) setError(path, { type: 'manual', message: issue.message });
@@ -305,12 +331,17 @@ function StepActions({ slug }: { slug: StepSlug }) {
     }
     clearErrors(fields as (keyof AssessFormValues)[]);
     return true;
-  }, [slug, getValues, setError, clearErrors]);
+  }, [auth.status, slug, getValues, setError, clearErrors]);
 
   const goNext = useCallback(() => {
     if (!validateCurrentStep()) return;
+    captureEvent('assessment_step_completed', {
+      auth_state: auth.status,
+      step_slug: slug,
+      step_index: stepIndex(slug) + 1,
+    });
     if (next) router.push(`/assess?step=${next}`);
-  }, [next, router, validateCurrentStep]);
+  }, [auth.status, next, router, slug, validateCurrentStep]);
 
   const runAndSave = useCallback(async () => {
     setSubmitError(null);
@@ -324,12 +355,22 @@ function StepActions({ slug }: { slug: StepSlug }) {
       }
       const ok = await trigger();
       if (!ok) {
+        captureEvent('assessment_validation_failed', {
+          auth_state: auth.status,
+          step_slug: slug,
+          step_index: stepIndex(slug) + 1,
+          scope: 'full_form',
+        });
         setSubmitError('Some entries need attention. Use the rail to jump back.');
         setSubmitting(false);
         return;
       }
       const values = getValues();
       const inputs = toProcessInputs(values);
+      captureEvent('assessment_submitted', {
+        auth_state: auth.status,
+        ...assessmentProps(inputs),
+      });
 
       // Engine runs server-side. Auth users hit /save (computes + persists +
       // returns results); unauth users hit /preview (computes only).
@@ -359,6 +400,12 @@ function StepActions({ slug }: { slug: StepSlug }) {
       }
       clearDraft();
 
+      captureEvent('assessment_completed', {
+        auth_state: auth.status,
+        saved: Boolean(savedId),
+        ...assessmentProps(inputs, results),
+      });
+
       setAnalyzing(true);
       savedIdRef.current = savedId;
     } catch (err) {
@@ -366,7 +413,7 @@ function StepActions({ slug }: { slug: StepSlug }) {
       setSubmitError(e.error || 'Could not run assessment.');
       setSubmitting(false);
     }
-  }, [auth.status, trigger, getValues, validateCurrentStep]);
+  }, [auth.status, trigger, getValues, validateCurrentStep, slug]);
 
   const handleAnalyzeComplete = useCallback(() => {
     if (auth.status !== 'authed') {

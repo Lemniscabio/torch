@@ -8,6 +8,7 @@ import { ResultsDashboard } from '@/components/results/ResultsDashboard';
 import { Wordmark } from '@/components/ui/Wordmark';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
+import { assessmentProps, captureEvent } from '@/lib/analytics';
 import type { PartialAssessmentResult, ProcessInputs } from '@torch/core-shared';
 
 type Snapshot = {
@@ -75,6 +76,11 @@ function ResultsPreview() {
       setLoaded(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!snap || auth.status === 'authed') return;
+    captureEvent('results_preview_viewed', assessmentProps(snap.inputs, snap.results));
+  }, [auth.status, snap]);
 
   if (auth.status === 'authed') return null;
 

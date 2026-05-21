@@ -9,6 +9,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, type ApiError } from '@/lib/api';
+import { assessmentProps, captureEvent } from '@/lib/analytics';
 import { ResultsDashboard } from '@/components/results/ResultsDashboard';
 import type { ProcessInputs, PartialAssessmentResult } from '@torch/core-shared';
 
@@ -65,6 +66,14 @@ function ResultsView() {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!snap) return;
+    captureEvent('results_viewed', {
+      source: id ? 'saved_assessment' : 'session_snapshot',
+      ...assessmentProps(snap.inputs, snap.results),
+    });
+  }, [id, snap]);
 
   if (error) {
     return (
