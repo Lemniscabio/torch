@@ -19,16 +19,67 @@ const jetbrains = JetBrains_Mono({
   weight: ['400', '500'],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://torch.lemnisca.bio';
+const title = 'Torch · Fermentation Scale-Up Risk Predictor · Lemnisca';
+const description =
+  'Predict scale-up risk across oxygen, mixing, shear, CO2, and heat. Find the bottleneck before pilot.';
+const previewImage = '/preview.png';
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'),
+  metadataBase: new URL(siteUrl),
   title: {
-    default: 'Torch · Lemnisca',
+    default: title,
     template: '%s · Torch',
   },
-  description:
-    'Fermentation scale-up risk predictor. Enter lab-scale parameters, see where your process breaks at industrial scale.',
+  description,
   applicationName: 'Torch',
-  robots: { index: false, follow: false },
+  keywords: [
+    'fermentation scale-up',
+    'bioprocess scale-up',
+    'bioreactor scale-up',
+    'oxygen transfer',
+    'mixing risk',
+    'industrial biotech',
+    'MOSCH report',
+    'Lemnisca',
+    'Torch',
+  ],
+  authors: [{ name: 'Lemnisca' }],
+  creator: 'Lemnisca',
+  publisher: 'Lemnisca',
+  formatDetection: { telephone: false, address: false, email: false },
+  alternates: { canonical: siteUrl },
+  openGraph: {
+    type: 'website',
+    siteName: 'Lemnisca',
+    title,
+    description,
+    url: siteUrl,
+    images: [{ url: previewImage, width: 1200, height: 630, alt: 'Torch by Lemnisca' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title,
+    description,
+    images: [previewImage],
+  },
+  robots: { index: true, follow: true },
+};
+
+const softwareApplicationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Torch',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  url: siteUrl,
+  image: `${siteUrl}${previewImage}`,
+  publisher: {
+    '@type': 'Organization',
+    name: 'Lemnisca',
+    url: 'https://lemnisca.bio',
+  },
+  description,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -51,6 +102,10 @@ try {
         />
       </head>
       <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+        />
         <PostHogProvider>
           <PostHogPageView />
           <ThemeProvider>

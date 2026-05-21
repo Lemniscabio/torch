@@ -174,7 +174,7 @@ export function LoginForm({
           </Field>
         ) : null}
 
-        {isReset ? (
+        {isSignup || isReset ? (
           <Field
             label="Confirm password"
             htmlFor="confirmPassword"

@@ -23,10 +23,16 @@ export const signInSchema = z.object({
   password: z.string().min(1, 'Enter your password.'),
 });
 
-export const signUpSchema = z.object({
-  email: workEmailSchema,
-  password: passwordSchema,
-});
+export const signUpSchema = z
+  .object({
+    email: workEmailSchema,
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, 'Confirm your password.'),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'Passwords do not match.',
+  });
 
 export const forgotPasswordSchema = z.object({
   email: emailSchema,
