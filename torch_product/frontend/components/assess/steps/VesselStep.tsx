@@ -137,7 +137,7 @@ export function VesselStep() {
             htmlFor="rpm"
             hint={
               labRange
-                ? `For ${labRange.scale_label} vessels: up to ${labRange.max_rpm.max} rpm.`
+                ? `For your ${formatLabVolume(vLab)} lab vessel: up to ${labRange.max_rpm.max} rpm.`
                 : undefined
             }
             error={errors.rpm?.message}
@@ -154,7 +154,7 @@ export function VesselStep() {
             htmlFor="vvm"
             hint={
               labRange
-                ? `For ${labRange.scale_label} vessels: up to ${labRange.max_aeration_vvm.max} vvm.`
+                ? `For your ${formatLabVolume(vLab)} lab vessel: up to ${labRange.max_aeration_vvm.max} vvm.`
                 : undefined
             }
             error={errors.vvm?.message}
@@ -339,6 +339,11 @@ export function VesselStep() {
       </div>
     </div>
   );
+}
+
+function formatLabVolume(value: unknown) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 'current';
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} L`;
 }
 
 function ImpellerTypeGroup({
