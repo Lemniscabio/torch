@@ -108,6 +108,32 @@ The system is shaped to deploy as two completely separate services:
 The two services don't share secrets, networks, or runtimes. The JWT signing
 secret (`JWT_SECRET`) lives only on the backend; the frontend never sees it.
 
+## Landing-to-product attribution
+
+Torch depends on the main landing repo for marketing attribution. The CTA links
+on `lemnisca.bio/torch` must point to the product with UTM/query parameters,
+for example:
+
+```text
+https://torch.lemnisca.bio/assess?utm_source=lemnisca_landing&utm_medium=torch_landing_cta&utm_campaign=torch_assessment&cta_location=hero
+```
+
+The product frontend reads those parameters, stores them for the session, and
+attaches them to PostHog events alongside:
+
+```ts
+posthog.register({
+  product: 'torch',
+  surface: 'product',
+  app: 'torch_app',
+});
+```
+
+Keep this contract in mind for every new Lemnisca product: the marketing repo
+owns outbound CTA attribution, and the product repo owns ingesting/persisting
+that attribution on product events. If either side changes, update both repos
+in the same release.
+
 ### Deferred GCP pieces
 - Cloud Run worker for PDF generation (Playwright/Puppeteer).
 - Cloud Tasks for queueing PDF jobs.
