@@ -33,6 +33,7 @@ export function VesselStep() {
     watch,
     setValue,
     clearErrors,
+    trigger,
     formState: { errors },
   } = useFormContext<AssessFormValues>();
 
@@ -88,6 +89,10 @@ export function VesselStep() {
 
   const maxLab    = maxImpellersForGeometry(typeof hdLab    === 'number' ? hdLab    : 1.2);
   const maxTarget = maxImpellersForGeometry(typeof hdTarget === 'number' ? hdTarget : 1.2);
+
+  useEffect(() => {
+    void trigger(['rpm', 'vvm', 'n_impellers', 'n_impellers_target']);
+  }, [vLab, hdLab, hdTarget, hdSame, nImpellers, nTarget, nSame, trigger]);
 
   const selectImpellerType = (nextType: ImpellerType) => {
     const nextDefaults = IMPELLER_CONSTANTS[nextType];

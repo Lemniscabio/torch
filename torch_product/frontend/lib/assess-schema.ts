@@ -13,6 +13,7 @@ import {
   PROCESS_INPUT_BOUNDS,
   inferHdFromVolume,
   getScaleupOperatingRange,
+  maxImpellersForGeometry,
 } from '@torch/core-shared';
 
 export { inferHdFromVolume };
@@ -159,7 +160,10 @@ export const scaleStepSchema = z.object(scaleShape).refine(
   { message: 'Target volume must be greater than lab volume.', path: ['v_target'] },
 );
 
-export const vesselStepSchema = z.object(vesselShape);
+export const vesselStepSchema = z.object({
+  v_lab: scaleShape.v_lab,
+  ...vesselShape,
+}).superRefine(addVesselEnvelopeIssues);
 
 const ESTIMATE_MU_SPECIES = new Set([
   'e_coli', 'b_subtilis', 's_cerevisiae', 'p_pastoris',
@@ -229,24 +233,64 @@ export const fullAssessSchema = z
         message: 'Pick a feeding frequency.',
       });
     }
-    if (typeof d.v_lab === 'number' && d.v_lab > 0) {
-      const range = getScaleupOperatingRange(d.v_lab);
-      if (typeof d.rpm === 'number' && d.rpm > range.max_rpm.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['rpm'],
-          message: `RPM exceeds the ${range.scale_label} envelope (max ${range.max_rpm.max}).`,
-        });
-      }
-      if (typeof d.vvm === 'number' && d.vvm > range.max_aeration_vvm.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['vvm'],
-          message: `VVM exceeds the ${range.scale_label} envelope (max ${range.max_aeration_vvm.max}).`,
-        });
-      }
-    }
+    addVesselEnvelopeIssues(d, ctx);
   });
+
+type VesselEnvelopeValues = {
+  v_lab?: number;
+  rpm?: number;
+  vvm?: number;
+  h_d_lab?: number;
+  h_d_target?: number;
+  h_d_target_same_as_lab?: boolean;
+  n_impellers?: number;
+  n_impellers_target?: number;
+  n_impellers_target_same_as_lab?: boolean;
+};
+
+function addVesselEnvelopeIssues(d: VesselEnvelopeValues, ctx: z.RefinementCtx) {
+  if (typeof d.v_lab === 'number' && d.v_lab > 0) {
+    const range = getScaleupOperatingRange(d.v_lab);
+    if (typeof d.rpm === 'number' && d.rpm > range.max_rpm.max) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['rpm'],
+        message: `RPM exceeds the ${range.scale_label} envelope (max ${range.max_rpm.max}).`,
+      });
+    }
+    if (typeof d.vvm === 'number' && d.vvm > range.max_aeration_vvm.max) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['vvm'],
+        message: `VVM exceeds the ${range.scale_label} envelope (max ${range.max_aeration_vvm.max}).`,
+      });
+    }
+  }
+
+  if (typeof d.h_d_lab === 'number' && typeof d.n_impellers === 'number') {
+    const maxLab = maxImpellersForGeometry(d.h_d_lab);
+    if (d.n_impellers > maxLab) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['n_impellers'],
+        message: `Too many impellers for lab H/D ${d.h_d_lab.toFixed(1)} (max ${maxLab}).`,
+      });
+    }
+  }
+
+  const targetHd = d.h_d_target_same_as_lab ? d.h_d_lab : d.h_d_target;
+  const targetImpellers = d.n_impellers_target_same_as_lab ? d.n_impellers : d.n_impellers_target;
+  if (typeof targetHd === 'number' && typeof targetImpellers === 'number') {
+    const maxTarget = maxImpellersForGeometry(targetHd);
+    if (targetImpellers > maxTarget) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['n_impellers_target'],
+        message: `Too many impellers for target H/D ${targetHd.toFixed(1)} (max ${maxTarget}).`,
+      });
+    }
+  }
+}
 
 export type IdentityStep = z.infer<typeof identityStepSchema>;
 export type ScaleStep    = z.infer<typeof scaleStepSchema>;
