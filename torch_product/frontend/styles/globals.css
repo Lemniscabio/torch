@@ -41,6 +41,12 @@
   --color-warning-bg: rgba(248,113,113,0.07);
   --color-warning-border: rgba(248,113,113,0.26);
 
+  /* ── Results-only accent: preserves analytical colour inside reports ── */
+  --color-results-accent: #FF5A1F;
+  --color-results-accent-hover: #e84e17;
+  --color-results-accent-muted: rgba(255,90,31,0.08);
+  --color-results-accent-ring: rgba(255,90,31,0.30);
+
   /* ── Product header glass ── */
   --color-header-bg: rgba(9, 9, 11, 0.34);
   --color-header-border: rgba(255,255,255,0.10);
@@ -93,6 +99,11 @@ html[data-theme="light"] {
   --color-warning-body: #5f2424;
   --color-warning-bg: rgba(185,28,28,0.06);
   --color-warning-border: rgba(185,28,28,0.22);
+
+  --color-results-accent: #c2410c;
+  --color-results-accent-hover: #9a3412;
+  --color-results-accent-muted: rgba(194,65,12,0.08);
+  --color-results-accent-ring: rgba(194,65,12,0.26);
 
   --color-header-bg: rgba(250, 250, 250, 0.38);
   --color-header-border: rgba(0,0,0,0.08);
@@ -284,6 +295,16 @@ input[type="number"]::-webkit-inner-spin-button {
 .btn-strong:hover:not(:disabled) {
   background: var(--color-accent-hover);
   border-color: var(--color-accent-hover);
+}
+
+.btn-results {
+  background: var(--color-results-accent);
+  color: #fff;
+  border-color: var(--color-results-accent);
+}
+.btn-results:hover:not(:disabled) {
+  background: var(--color-results-accent-hover);
+  border-color: var(--color-results-accent-hover);
 }
 
 /* ── Glass surfaces — nav / bottom bar ── */
