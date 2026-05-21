@@ -293,11 +293,11 @@ function StepBody({ slug }: { slug: StepSlug }) {
 function StepActions({ slug }: { slug: StepSlug }) {
   const auth = useAuth();
   const router = useRouter();
-  const search = useSearchParams();
   const { trigger, getValues, setError, clearErrors } = useFormContext<AssessFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
   const savedIdRef = useRef<string | null>(null);
 
   const idx = stepIndex(slug);
@@ -305,9 +305,13 @@ function StepActions({ slug }: { slug: StepSlug }) {
   const next = idx < STEPS.length - 1 ? STEPS[idx + 1].slug : undefined;
   const isFinalStep = next === undefined;
 
+  useEffect(() => {
+    setStepError(null);
+  }, [slug]);
+
   const goBack = useCallback(() => {
-    if (prev) router.push(assessmentStepHref(prev, search));
-  }, [prev, router, search]);
+    if (prev) router.push(assessmentStepHref(prev));
+  }, [prev, router]);
 
   // Validate only the current step's slice against its dedicated schema.
   // Using the full-schema trigger() would fail on later-step blanks.
@@ -318,6 +322,7 @@ function StepActions({ slug }: { slug: StepSlug }) {
     const result = schema.safeParse(values);
 
     if (!result.success) {
+      setStepError(result.error.issues[0]?.message ?? 'Some entries need attention.');
       captureEvent('assessment_validation_failed', {
         auth_state: auth.status,
         step_slug: slug,
@@ -330,19 +335,20 @@ function StepActions({ slug }: { slug: StepSlug }) {
       });
       return false;
     }
+    setStepError(null);
     clearErrors(fields as (keyof AssessFormValues)[]);
     return true;
   }, [auth.status, slug, getValues, setError, clearErrors]);
 
   const goNext = useCallback(() => {
     if (!validateCurrentStep()) return;
+    if (next) router.push(assessmentStepHref(next));
     captureEvent('assessment_step_completed', {
       auth_state: auth.status,
       step_slug: slug,
       step_index: stepIndex(slug) + 1,
     });
-    if (next) router.push(assessmentStepHref(next, search));
-  }, [auth.status, next, router, search, slug, validateCurrentStep]);
+  }, [auth.status, next, router, slug, validateCurrentStep]);
 
   const runAndSave = useCallback(async () => {
     setSubmitError(null);
@@ -448,14 +454,13 @@ function StepActions({ slug }: { slug: StepSlug }) {
       onBack={prev ? goBack : undefined}
       onNext={goNext}
       nextLabel="Next"
+      errorSummary={stepError}
     />
   );
 }
 
-function assessmentStepHref(step: StepSlug, search: URLSearchParams | null) {
-  const params = new URLSearchParams(search?.toString());
-  params.set('step', step);
-  return `/assess/?${params.toString()}`;
+function assessmentStepHref(step: StepSlug) {
+  return `/assess/?step=${step}`;
 }
 
 function SunIcon() {
