@@ -293,6 +293,7 @@ function StepBody({ slug }: { slug: StepSlug }) {
 function StepActions({ slug }: { slug: StepSlug }) {
   const auth = useAuth();
   const router = useRouter();
+  const search = useSearchParams();
   const { trigger, getValues, setError, clearErrors } = useFormContext<AssessFormValues>();
   const [submitting, setSubmitting] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -305,8 +306,8 @@ function StepActions({ slug }: { slug: StepSlug }) {
   const isFinalStep = next === undefined;
 
   const goBack = useCallback(() => {
-    if (prev) router.push(`/assess?step=${prev}`);
-  }, [prev, router]);
+    if (prev) router.push(assessmentStepHref(prev, search));
+  }, [prev, router, search]);
 
   // Validate only the current step's slice against its dedicated schema.
   // Using the full-schema trigger() would fail on later-step blanks.
@@ -340,8 +341,8 @@ function StepActions({ slug }: { slug: StepSlug }) {
       step_slug: slug,
       step_index: stepIndex(slug) + 1,
     });
-    if (next) router.push(`/assess?step=${next}`);
-  }, [auth.status, next, router, slug, validateCurrentStep]);
+    if (next) router.push(assessmentStepHref(next, search));
+  }, [auth.status, next, router, search, slug, validateCurrentStep]);
 
   const runAndSave = useCallback(async () => {
     setSubmitError(null);
@@ -449,6 +450,12 @@ function StepActions({ slug }: { slug: StepSlug }) {
       nextLabel="Next"
     />
   );
+}
+
+function assessmentStepHref(step: StepSlug, search: URLSearchParams | null) {
+  const params = new URLSearchParams(search?.toString());
+  params.set('step', step);
+  return `/assess/?${params.toString()}`;
 }
 
 function SunIcon() {

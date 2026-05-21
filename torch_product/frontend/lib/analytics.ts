@@ -25,32 +25,48 @@ export function hasPostHogConfig() {
 
 export function registerTorchProductContext() {
   if (!hasPostHogConfig()) return;
-  posthog.register({
-    product: 'torch',
-    surface: 'product',
-    app: 'torch_app',
-  });
+  try {
+    posthog.register({
+      product: 'torch',
+      surface: 'product',
+      app: 'torch_app',
+    });
+  } catch {
+    // Analytics must never block product UI.
+  }
 }
 
 export function captureEvent(event: string, props: AnalyticsProps = {}) {
   if (!hasPostHogConfig()) return;
-  posthog.capture(event, props);
+  try {
+    posthog.capture(event, props);
+  } catch {
+    // Analytics must never block product UI.
+  }
 }
 
 export function identifyUser(user: SessionUser) {
   if (!hasPostHogConfig()) return;
-  posthog.identify(user.id, {
-    email: user.email,
-    company_domain: user.company_domain,
-  });
-  posthog.group('company', user.company_domain, {
-    domain: user.company_domain,
-  });
+  try {
+    posthog.identify(user.id, {
+      email: user.email,
+      company_domain: user.company_domain,
+    });
+    posthog.group('company', user.company_domain, {
+      domain: user.company_domain,
+    });
+  } catch {
+    // Analytics must never block auth UI.
+  }
 }
 
 export function resetAnalytics() {
   if (!hasPostHogConfig()) return;
-  posthog.reset();
+  try {
+    posthog.reset();
+  } catch {
+    // Analytics must never block auth UI.
+  }
   registerTorchProductContext();
 }
 
@@ -69,7 +85,11 @@ export function readOrStoreAttribution(): AttributionProps {
   const fromUrl = attributionFromSearch(url.searchParams);
   if (Object.keys(fromUrl).length > 0) {
     window.sessionStorage.setItem(ATTRIBUTION_SESSION_KEY, JSON.stringify(fromUrl));
-    posthog.register(fromUrl);
+    try {
+      posthog.register(fromUrl);
+    } catch {
+      // Analytics must never block product UI.
+    }
     return fromUrl;
   }
 

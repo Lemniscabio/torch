@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Torch PostHog Analytics Guide</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f6f6;
+        --panel: #ffffff;
+        --text: #151519;
+        --muted: #62636b;
+        --line: #dedee3;
+        --code: #f0f0f2;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        line-height: 1.55;
+      }
+
+      main {
+        width: min(920px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 56px 0 72px;
+      }
+
+      header {
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 32px;
+        padding-bottom: 24px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        font-size: 42px;
+        margin: 0 0 12px;
+      }
+
+      h2 {
+        font-size: 24px;
+        margin: 36px 0 12px;
+      }
+
+      h3 {
+        font-size: 18px;
+        margin: 24px 0 8px;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 18px 0;
+        padding: 22px;
+      }
+
+      code,
+      pre {
+        background: var(--code);
+        border-radius: 6px;
+        color: var(--text);
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      code {
+        padding: 2px 5px;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 14px;
+        white-space: pre;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--text);
+        font-size: 13px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Torch PostHog Analytics Guide</h1>
+        <p>
+          This document explains how to inspect Torch analytics in PostHog and
+          how the marketing landing page connects to the product app.
+        </p>
+      </header>
+
+      <section>
+        <h2>Quick Health Check</h2>
+        <p>
+          Start in PostHog's event activity view. Search for the core Torch
+          events and open individual event details to confirm the expected
+          properties are present.
+        </p>
+        <pre><code>torch_landing_cta_clicked
+torch_app_entered
+$pageview
+assessment_started
+assessment_step_completed
+assessment_submitted
+assessment_completed
+results_viewed
+pdf_download_clicked</code></pre>
+        <p>Expected attribution and context properties:</p>
+        <pre><code>utm_source: "lemnisca_landing"
+utm_medium: "torch_landing_cta"
+utm_campaign: "torch_assessment"
+cta_location: "hero"
+product: "torch"
+surface: "product"
+app: "torch_app"</code></pre>
+      </section>
+
+      <section>
+        <h2>Recommended Dashboard</h2>
+        <p>Create a dashboard named <code>Torch Acquisition + Assessment Funnel</code>.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Insight</th>
+              <th>PostHog type</th>
+              <th>Configuration</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Landing CTA clicks</td>
+              <td>Trends</td>
+              <td>
+                Event <code>torch_landing_cta_clicked</code>, broken down by
+                <code>cta_location</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Product entries from landing</td>
+              <td>Trends</td>
+              <td>
+                Event <code>torch_app_entered</code>, filter
+                <code>utm_source = lemnisca_landing</code>, breakdown by
+                <code>cta_location</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Main assessment conversion</td>
+              <td>Funnel</td>
+              <td>
+                Use the funnel sequence listed below. Filter by
+                <code>utm_campaign = torch_assessment</code> and break down by
+                <code>cta_location</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Assessment friction</td>
+              <td>Trends</td>
+              <td>
+                Event <code>assessment_validation_failed</code>, broken down by
+                step fields such as <code>step_slug</code>.
+              </td>
+            </tr>
+            <tr>
+              <td>Result distribution</td>
+              <td>Trends or table</td>
+              <td>
+                Event <code>assessment_completed</code>, broken down by
+                <code>highest_risk</code>, <code>primary_bottleneck</code>,
+                <code>scale_ratio_bucket</code>, <code>organism_class</code>,
+                or <code>process_type</code>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Main Funnel</h2>
+        <p>
+          This is the most useful first view because it answers which landing
+          CTA brought users into Torch and whether those users completed the
+          assessment.
+        </p>
+        <pre><code>torch_landing_cta_clicked
+-> torch_app_entered
+-> assessment_started
+-> assessment_step_completed
+-> assessment_submitted
+-> assessment_completed
+-> results_viewed</code></pre>
+      </section>
+
+      <section>
+        <h2>Session Replay Workflow</h2>
+        <p>
+          Use session replays after the dashboard shows a drop-off or friction
+          point. Filter recordings by <code>assessment_started</code>,
+          <code>assessment_validation_failed</code>, or users who entered the
+          funnel but did not reach <code>assessment_completed</code>.
+        </p>
+      </section>
+
+      <section>
+        <h2>Marketing-to-Product Contract</h2>
+        <p>
+          The main landing repo owns outbound CTA attribution. Torch owns
+          reading and storing that attribution, then attaching it to product
+          events.
+        </p>
+        <pre><code>https://torch.lemnisca.bio/assess/?utm_source=lemnisca_landing&amp;utm_medium=torch_landing_cta&amp;utm_campaign=torch_assessment&amp;cta_location=hero</code></pre>
+        <p>
+          For future Lemnisca products, add UTM parameters on the marketing
+          side and add product context registration on the product side.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
