@@ -4,7 +4,7 @@ import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { LoginForm } from '@/components/auth/LoginForm';
-import { Wordmark } from '@/components/ui/Wordmark';
+import Link from 'next/link';
 
 export default function LoginPage() {
   return (
@@ -53,7 +53,7 @@ function LoginScreen() {
 
       <div className="relative z-10 w-full max-w-[420px]">
         <div className="mb-8 flex items-center gap-3">
-          <Wordmark href="/" />
+          <ProductBrand />
         </div>
 
         <div className="glass-card px-8 py-10">
@@ -69,10 +69,34 @@ function LoginShell() {
     <main className="flex min-h-dvh flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-[420px]">
         <div className="mb-8">
-          <Wordmark href="/" />
+          <ProductBrand />
         </div>
         <div className="glass-card h-80 px-8 py-10" />
       </div>
     </main>
+  );
+}
+
+function ProductBrand() {
+  return (
+    <Link
+      href="/assess"
+      className="group inline-flex items-end gap-2.5 transition-opacity duration-200 hover:opacity-85"
+      aria-label="Torch assessment"
+    >
+      <span
+        className="text-[30px] leading-none font-semibold tracking-[-0.02em] transition-colors duration-300"
+        style={{ color: 'var(--color-ink-900)' }}
+      >
+        Torch
+      </span>
+      <span
+        className="flex flex-col items-start leading-none pb-[2px] transition-colors duration-300"
+        style={{ color: 'var(--color-ink-500)' }}
+      >
+        <span className="text-[7px] font-medium tracking-[0.02em] md:text-[8px]">by</span>
+        <span className="text-[9px] font-medium tracking-[-0.02em] md:text-[10px]">Lemnisca</span>
+      </span>
+    </Link>
   );
 }
