@@ -14,6 +14,7 @@ frontend/
 # Local env / IDE / OS
 **/.env
 **/.env.local
+cloud-sql-proxy
 .vscode/
 .idea/
 .DS_Store

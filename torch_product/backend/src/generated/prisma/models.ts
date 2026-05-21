@@ -10,4 +10,5 @@
  */
 export type * from './models/User'
 export type * from './models/Assessment'
+export type * from './models/PasswordResetToken'
 export type * from './commonInputTypes'

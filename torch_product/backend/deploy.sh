@@ -12,8 +12,8 @@ gcloud run deploy torch-backend \
   --platform=managed \
   --allow-unauthenticated \
   --add-cloudsql-instances="$INSTANCE_CONN" \
-  --set-secrets=DATABASE_URL=torch-database-url:latest,JWT_SECRET=torch-jwt-secret:latest \
-  --set-env-vars=NODE_ENV=production,FRONTEND_URL=https://torch.lemnisca.bio,COOKIE_SECURE=true \
+  --set-secrets=DATABASE_URL=torch-database-url:latest,JWT_SECRET=torch-jwt-secret:latest,RESEND_API_KEY=resend-api-key:latest \
+  --set-env-vars="NODE_ENV=production,FRONTEND_URL=https://torch.lemnisca.bio,COOKIE_SECURE=true,AUTH_EMAIL_FROM=Lemnisca <shilpa@lemnisca.bio>" \
   --port=8080 \
   --memory=1Gi \
   --cpu=1 \

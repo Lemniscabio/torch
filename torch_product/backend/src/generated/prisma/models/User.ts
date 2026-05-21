@@ -183,6 +183,7 @@ export type UserWhereInput = {
   company_domain?: Prisma.StringFilter<"User"> | string
   created_at?: Prisma.DateTimeFilter<"User"> | Date | string
   assessments?: Prisma.AssessmentListRelationFilter
+  password_reset_tokens?: Prisma.PasswordResetTokenListRelationFilter
 }
 
 export type UserOrderByWithRelationInput = {
@@ -192,6 +193,7 @@ export type UserOrderByWithRelationInput = {
   company_domain?: Prisma.SortOrder
   created_at?: Prisma.SortOrder
   assessments?: Prisma.AssessmentOrderByRelationAggregateInput
+  password_reset_tokens?: Prisma.PasswordResetTokenOrderByRelationAggregateInput
 }
 
 export type UserWhereUniqueInput = Prisma.AtLeast<{
@@ -204,6 +206,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   company_domain?: Prisma.StringFilter<"User"> | string
   created_at?: Prisma.DateTimeFilter<"User"> | Date | string
   assessments?: Prisma.AssessmentListRelationFilter
+  password_reset_tokens?: Prisma.PasswordResetTokenListRelationFilter
 }, "id" | "email">
 
 export type UserOrderByWithAggregationInput = {
@@ -235,6 +238,7 @@ export type UserCreateInput = {
   company_domain: string
   created_at?: Date | string
   assessments?: Prisma.AssessmentCreateNestedManyWithoutUserInput
+  password_reset_tokens?: Prisma.PasswordResetTokenCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateInput = {
@@ -244,6 +248,7 @@ export type UserUncheckedCreateInput = {
   company_domain: string
   created_at?: Date | string
   assessments?: Prisma.AssessmentUncheckedCreateNestedManyWithoutUserInput
+  password_reset_tokens?: Prisma.PasswordResetTokenUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserUpdateInput = {
@@ -253,6 +258,7 @@ export type UserUpdateInput = {
   company_domain?: Prisma.StringFieldUpdateOperationsInput | string
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   assessments?: Prisma.AssessmentUpdateManyWithoutUserNestedInput
+  password_reset_tokens?: Prisma.PasswordResetTokenUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateInput = {
@@ -262,6 +268,7 @@ export type UserUncheckedUpdateInput = {
   company_domain?: Prisma.StringFieldUpdateOperationsInput | string
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   assessments?: Prisma.AssessmentUncheckedUpdateManyWithoutUserNestedInput
+  password_reset_tokens?: Prisma.PasswordResetTokenUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateManyInput = {
@@ -339,12 +346,27 @@ export type UserUpdateOneRequiredWithoutAssessmentsNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutAssessmentsInput, Prisma.UserUpdateWithoutAssessmentsInput>, Prisma.UserUncheckedUpdateWithoutAssessmentsInput>
 }
 
+export type UserCreateNestedOneWithoutPassword_reset_tokensInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutPassword_reset_tokensInput, Prisma.UserUncheckedCreateWithoutPassword_reset_tokensInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutPassword_reset_tokensInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserUpdateOneRequiredWithoutPassword_reset_tokensNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutPassword_reset_tokensInput, Prisma.UserUncheckedCreateWithoutPassword_reset_tokensInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutPassword_reset_tokensInput
+  upsert?: Prisma.UserUpsertWithoutPassword_reset_tokensInput
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutPassword_reset_tokensInput, Prisma.UserUpdateWithoutPassword_reset_tokensInput>, Prisma.UserUncheckedUpdateWithoutPassword_reset_tokensInput>
+}
+
 export type UserCreateWithoutAssessmentsInput = {
   id?: string
   email: string
   password_hash: string
   company_domain: string
   created_at?: Date | string
+  password_reset_tokens?: Prisma.PasswordResetTokenCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutAssessmentsInput = {
@@ -353,6 +375,7 @@ export type UserUncheckedCreateWithoutAssessmentsInput = {
   password_hash: string
   company_domain: string
   created_at?: Date | string
+  password_reset_tokens?: Prisma.PasswordResetTokenUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutAssessmentsInput = {
@@ -377,6 +400,7 @@ export type UserUpdateWithoutAssessmentsInput = {
   password_hash?: Prisma.StringFieldUpdateOperationsInput | string
   company_domain?: Prisma.StringFieldUpdateOperationsInput | string
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  password_reset_tokens?: Prisma.PasswordResetTokenUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutAssessmentsInput = {
@@ -385,6 +409,59 @@ export type UserUncheckedUpdateWithoutAssessmentsInput = {
   password_hash?: Prisma.StringFieldUpdateOperationsInput | string
   company_domain?: Prisma.StringFieldUpdateOperationsInput | string
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  password_reset_tokens?: Prisma.PasswordResetTokenUncheckedUpdateManyWithoutUserNestedInput
+}
+
+export type UserCreateWithoutPassword_reset_tokensInput = {
+  id?: string
+  email: string
+  password_hash: string
+  company_domain: string
+  created_at?: Date | string
+  assessments?: Prisma.AssessmentCreateNestedManyWithoutUserInput
+}
+
+export type UserUncheckedCreateWithoutPassword_reset_tokensInput = {
+  id?: string
+  email: string
+  password_hash: string
+  company_domain: string
+  created_at?: Date | string
+  assessments?: Prisma.AssessmentUncheckedCreateNestedManyWithoutUserInput
+}
+
+export type UserCreateOrConnectWithoutPassword_reset_tokensInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutPassword_reset_tokensInput, Prisma.UserUncheckedCreateWithoutPassword_reset_tokensInput>
+}
+
+export type UserUpsertWithoutPassword_reset_tokensInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutPassword_reset_tokensInput, Prisma.UserUncheckedUpdateWithoutPassword_reset_tokensInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutPassword_reset_tokensInput, Prisma.UserUncheckedCreateWithoutPassword_reset_tokensInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutPassword_reset_tokensInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutPassword_reset_tokensInput, Prisma.UserUncheckedUpdateWithoutPassword_reset_tokensInput>
+}
+
+export type UserUpdateWithoutPassword_reset_tokensInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  password_hash?: Prisma.StringFieldUpdateOperationsInput | string
+  company_domain?: Prisma.StringFieldUpdateOperationsInput | string
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  assessments?: Prisma.AssessmentUpdateManyWithoutUserNestedInput
+}
+
+export type UserUncheckedUpdateWithoutPassword_reset_tokensInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  password_hash?: Prisma.StringFieldUpdateOperationsInput | string
+  company_domain?: Prisma.StringFieldUpdateOperationsInput | string
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  assessments?: Prisma.AssessmentUncheckedUpdateManyWithoutUserNestedInput
 }
 
 
@@ -394,10 +471,12 @@ export type UserUncheckedUpdateWithoutAssessmentsInput = {
 
 export type UserCountOutputType = {
   assessments: number
+  password_reset_tokens: number
 }
 
 export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   assessments?: boolean | UserCountOutputTypeCountAssessmentsArgs
+  password_reset_tokens?: boolean | UserCountOutputTypeCountPassword_reset_tokensArgs
 }
 
 /**
@@ -417,6 +496,13 @@ export type UserCountOutputTypeCountAssessmentsArgs<ExtArgs extends runtime.Type
   where?: Prisma.AssessmentWhereInput
 }
 
+/**
+ * UserCountOutputType without action
+ */
+export type UserCountOutputTypeCountPassword_reset_tokensArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.PasswordResetTokenWhereInput
+}
+
 
 export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
@@ -425,6 +511,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   company_domain?: boolean
   created_at?: boolean
   assessments?: boolean | Prisma.User$assessmentsArgs<ExtArgs>
+  password_reset_tokens?: boolean | Prisma.User$password_reset_tokensArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["user"]>
 
@@ -455,6 +542,7 @@ export type UserSelectScalar = {
 export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "password_hash" | "company_domain" | "created_at", ExtArgs["result"]["user"]>
 export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   assessments?: boolean | Prisma.User$assessmentsArgs<ExtArgs>
+  password_reset_tokens?: boolean | Prisma.User$password_reset_tokensArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type UserIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
@@ -464,6 +552,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   name: "User"
   objects: {
     assessments: Prisma.$AssessmentPayload<ExtArgs>[]
+    password_reset_tokens: Prisma.$PasswordResetTokenPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -866,6 +955,7 @@ readonly fields: UserFieldRefs;
 export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
   assessments<T extends Prisma.User$assessmentsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$assessmentsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$AssessmentPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  password_reset_tokens<T extends Prisma.User$password_reset_tokensArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$password_reset_tokensArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$PasswordResetTokenPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1314,6 +1404,30 @@ export type User$assessmentsArgs<ExtArgs extends runtime.Types.Extensions.Intern
   take?: number
   skip?: number
   distinct?: Prisma.AssessmentScalarFieldEnum | Prisma.AssessmentScalarFieldEnum[]
+}
+
+/**
+ * User.password_reset_tokens
+ */
+export type User$password_reset_tokensArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the PasswordResetToken
+   */
+  select?: Prisma.PasswordResetTokenSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the PasswordResetToken
+   */
+  omit?: Prisma.PasswordResetTokenOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.PasswordResetTokenInclude<ExtArgs> | null
+  where?: Prisma.PasswordResetTokenWhereInput
+  orderBy?: Prisma.PasswordResetTokenOrderByWithRelationInput | Prisma.PasswordResetTokenOrderByWithRelationInput[]
+  cursor?: Prisma.PasswordResetTokenWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.PasswordResetTokenScalarFieldEnum | Prisma.PasswordResetTokenScalarFieldEnum[]
 }
 
 /**

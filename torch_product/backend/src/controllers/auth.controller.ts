@@ -32,3 +32,35 @@ export async function handleAuth(req: Request, res: Response) {
     res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 }
+
+export async function forgotPassword(req: Request, res: Response) {
+  try {
+    const { email } = req.body;
+    await authService.requestPasswordReset(email);
+    res.json({
+      ok: true,
+      message: "If an account exists for that email, we sent a reset link.",
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.json({
+      ok: true,
+      message: "If an account exists for that email, we sent a reset link.",
+    });
+  }
+}
+
+export async function resetPassword(req: Request, res: Response) {
+  try {
+    const { token, password } = req.body;
+    await authService.resetPassword(token, password);
+    res.json({ ok: true });
+  } catch (error: any) {
+    if (error.status) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    console.error("Reset password error:", error);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+}

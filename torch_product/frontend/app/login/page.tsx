@@ -19,7 +19,11 @@ function LoginScreen() {
   const router = useRouter();
   const search = useSearchParams();
   const next = search?.get('next') ?? '/dashboard';
-  const initialMode = search?.get('mode') === 'signup' ? 'signup' : 'login';
+  const rawMode = search?.get('mode');
+  const initialMode = rawMode === 'signup' || rawMode === 'forgot' || rawMode === 'reset'
+    ? rawMode
+    : 'login';
+  const resetToken = search?.get('token') ?? '';
 
   useEffect(() => {
     if (auth.status === 'authed') router.replace(next);
@@ -57,7 +61,7 @@ function LoginScreen() {
         </div>
 
         <div className="glass-card px-8 py-10">
-          <LoginForm mode={initialMode} next={next} />
+          <LoginForm mode={initialMode} next={next} resetToken={resetToken} />
         </div>
       </div>
     </main>

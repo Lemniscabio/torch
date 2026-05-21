@@ -8,12 +8,13 @@ generator client {
 }
 
 model User {
-  id             String       @id @default(uuid()) @db.Uuid
-  email          String       @unique
-  password_hash  String
-  company_domain String
-  created_at     DateTime     @default(now())
-  assessments    Assessment[]
+  id                    String               @id @default(uuid()) @db.Uuid
+  email                 String               @unique
+  password_hash         String
+  company_domain        String
+  created_at            DateTime             @default(now())
+  assessments           Assessment[]
+  password_reset_tokens PasswordResetToken[]
 }
 
 model Assessment {
@@ -23,4 +24,17 @@ model Assessment {
   results    Json
   created_at DateTime @default(now())
   user       User     @relation(fields: [user_email], references: [email])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_email String
+  token_hash String    @unique
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+  user       User      @relation(fields: [user_email], references: [email], onDelete: Cascade)
+
+  @@index([user_email])
+  @@index([expires_at])
 }
