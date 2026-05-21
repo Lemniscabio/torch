@@ -84,6 +84,10 @@ function AssessHeader() {
     };
   }, [menuOpen]);
 
+  if (auth.status === 'loading') {
+    return <AssessHeaderPlaceholder />;
+  }
+
   if (auth.status === 'authed') {
     return <TopNav user={auth.user} />;
   }
@@ -207,6 +211,36 @@ function AssessHeader() {
               </span>
             </Link>
           </nav>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function AssessHeaderPlaceholder() {
+  return (
+    <header className="product-header sticky inset-x-0 top-0 z-40 overflow-visible">
+      <div className="relative z-10 flex items-center justify-between px-6 py-5 md:px-10 lg:px-14">
+        <Link
+          href="/assess"
+          className="group inline-flex items-end gap-2.5 transition-opacity duration-200 hover:opacity-85"
+          aria-label="Torch assessment"
+        >
+          <span className="text-[30px] leading-none font-semibold tracking-[-0.02em] text-white transition-colors duration-300">
+            Torch
+          </span>
+          <span className="flex flex-col items-start leading-none pb-[2px] text-white/70 transition-colors duration-300">
+            <span className="text-[7px] font-medium tracking-[0.02em] md:text-[8px]">by</span>
+            <span className="text-[9px] font-medium tracking-[-0.02em] md:text-[10px]">Lemnisca</span>
+          </span>
+        </Link>
+        <div className="hidden items-center gap-7 md:flex" aria-hidden>
+          <span className="h-4 w-20 rounded" style={{ background: 'var(--color-header-subtle)' }} />
+          <span className="h-4 w-32 rounded" style={{ background: 'var(--color-header-subtle)' }} />
+        </div>
+        <div className="flex items-center gap-3" aria-hidden>
+          <span className="h-10 w-10 rounded-full" style={{ background: 'var(--color-header-subtle)' }} />
+          <span className="h-10 w-24 rounded-full" style={{ background: 'var(--color-header-subtle)' }} />
         </div>
       </div>
     </header>
