@@ -76,7 +76,7 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
         type="button"
         onClick={openModal}
         disabled={disabled}
-        className="btn btn-results"
+        className="btn btn-strong"
       >
         Download PDF Report
       </button>
@@ -179,7 +179,7 @@ function Spinner() {
       <circle cx="14" cy="14" r="11" stroke="var(--color-rule-strong)" strokeWidth="3" />
       <path
         d="M14 3 A11 11 0 0 1 25 14"
-        stroke="var(--color-results-accent)"
+        stroke="var(--color-ink-950)"
         strokeWidth="3"
         strokeLinecap="round"
       />
