@@ -26,7 +26,7 @@ export function Field({
         <p
           role="alert"
           className="text-meta"
-          style={{ color: 'var(--color-flame-700)' }}
+          style={{ color: 'var(--color-danger-fg)' }}
         >
           {error}
         </p>

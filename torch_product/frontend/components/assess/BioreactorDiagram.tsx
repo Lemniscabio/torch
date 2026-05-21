@@ -2,9 +2,9 @@
 
 // Pure SVG bioreactor — vessel walls, motor, shaft, impellers, sparger,
 // liquid fill at 70%. Ported from old/frontend/src/components/BioreactorDiagram.tsx
-// with the colour tokens swapped to torch_product's ink/flame palette. The
-// liquid tint stays a neutral teal — reads as "broth" without competing
-// with the flame accent.
+// with the colour tokens swapped to torch_product's monochrome palette. The
+// liquid tint stays monochrome so the diagram does not introduce a second
+// product palette.
 //
 // In `animated` mode the impellers spin (CSS perspective + rotateY) and
 // bubbles rise from sparger to liquid surface.
@@ -22,7 +22,7 @@ type Props = {
 };
 
 const INK = 'var(--color-ink-900)';
-const ACCENT = 'var(--color-flame-500)';
+const ACCENT = 'var(--color-accent)';
 const TERTIARY = 'var(--color-ink-400)';
 
 function renderImpeller(
@@ -200,7 +200,7 @@ export function BioreactorDiagram({
             y={liquidTop}
             width={tankD - 2}
             height={wallBottom - liquidTop}
-            fill="rgba(74,158,142,0.10)"
+            fill="var(--color-accent-muted)"
             clipPath={`url(#${clipId})`}
             className="transition-all duration-500"
           />

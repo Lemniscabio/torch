@@ -179,7 +179,7 @@ export function ProcessStep() {
             max={100}
             step={1}
             className="flex-1"
-            style={{ accentColor: 'var(--color-flame-500)' }}
+            style={{ accentColor: 'var(--color-accent)' }}
             {...register('do_setpoint', { valueAsNumber: true })}
           />
           <div

@@ -1,8 +1,7 @@
 import Link from 'next/link';
 
-// The product wordmark. No icon — just typography. The flame accent appears
-// only on the dot under the "i" in "torch", which is the single piece of
-// product branding inside the app (marketing uses different chrome).
+// The product wordmark. No icon, no brand accent; the app shell stays
+// deliberately monochrome while marketing can keep its own palette.
 export function Wordmark({ href = '/dashboard' }: { href?: string }) {
   return (
     <Link
@@ -19,7 +18,7 @@ export function Wordmark({ href = '/dashboard' }: { href?: string }) {
       <span
         aria-hidden
         className="inline-block h-1.5 w-1.5 rounded-full transition-transform duration-150 group-hover:scale-125"
-        style={{ background: 'var(--color-flame-500)' }}
+        style={{ background: 'var(--color-ink-500)' }}
       />
     </Link>
   );

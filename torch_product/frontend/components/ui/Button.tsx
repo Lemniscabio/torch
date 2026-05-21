@@ -3,7 +3,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import Link, { type LinkProps } from 'next/link';
 
-type Variant = 'primary' | 'ghost' | 'flame';
+type Variant = 'primary' | 'ghost' | 'strong';
 type Size = 'sm' | 'md';
 
 type BaseProps = {
@@ -18,7 +18,7 @@ type ButtonProps = BaseProps & ButtonHTMLAttributes<HTMLButtonElement>;
 function classes({ variant = 'primary', size = 'md', fullWidth }: BaseProps) {
   const base = 'btn';
   const variantClass =
-    variant === 'primary' ? 'btn-primary' : variant === 'flame' ? 'btn-flame' : 'btn-ghost';
+    variant === 'primary' ? 'btn-primary' : variant === 'strong' ? 'btn-strong' : 'btn-ghost';
   const sizeClass = size === 'sm' ? 'h-8 px-3 text-[13px]' : '';
   const widthClass = fullWidth ? 'w-full' : '';
   return [base, variantClass, sizeClass, widthClass].filter(Boolean).join(' ');

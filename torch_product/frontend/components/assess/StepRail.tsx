@@ -22,7 +22,7 @@ export function StepRail({ current }: { current: StepSlug }) {
               style={{
                 width: active ? '16px' : '8px',
                 background: active
-                  ? 'var(--color-flame-500)'
+                  ? 'var(--color-accent)'
                   : navigable
                   ? 'var(--color-ink-300)'
                   : 'var(--color-ink-200)',

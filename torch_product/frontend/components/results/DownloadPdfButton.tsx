@@ -72,7 +72,7 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
         type="button"
         onClick={openModal}
         disabled={disabled}
-        className="btn btn-flame"
+        className="btn btn-strong"
       >
         Download PDF Report
       </button>
@@ -131,7 +131,7 @@ export function DownloadPdfButton({ assessmentId, filename, disabled }: Props) {
                 </div>
               ) : state === 'error' ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                  <p className="text-[14px]" style={{ color: 'var(--color-flame-700)' }}>
+                  <p className="text-[14px]" style={{ color: 'var(--color-danger-fg)' }}>
                     PDF generation failed.
                   </p>
                   <button
@@ -175,7 +175,7 @@ function Spinner() {
       <circle cx="14" cy="14" r="11" stroke="var(--color-rule-strong)" strokeWidth="3" />
       <path
         d="M14 3 A11 11 0 0 1 25 14"
-        stroke="var(--color-flame-500)"
+        stroke="var(--color-accent)"
         strokeWidth="3"
         strokeLinecap="round"
       />

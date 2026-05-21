@@ -32,7 +32,7 @@ export function WizardBottomBar({
             <p
               role="alert"
               className="text-meta truncate"
-              style={{ color: 'var(--color-flame-700)' }}
+              style={{ color: 'var(--color-danger-fg)' }}
             >
               {errorSummary}
             </p>
@@ -46,7 +46,7 @@ export function WizardBottomBar({
           ) : null}
           <Button
             type="button"
-            variant={finalStep ? 'flame' : 'primary'}
+            variant={finalStep ? 'strong' : 'primary'}
             onClick={onNext}
             loading={nextLoading}
             disabled={nextDisabled}

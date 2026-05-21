@@ -97,7 +97,7 @@ export function AnalyzingAnimation({ onComplete, duration = 5000 }: Props) {
       <p
         key={stage}
         className="mt-4 font-[var(--font-mono)] text-[1.05rem] motion-fade-stage"
-        style={{ color: 'var(--color-flame-500)', letterSpacing: '0.04em' }}
+        style={{ color: 'var(--color-accent)', letterSpacing: '0.04em' }}
       >
         {STAGES[stage]}
       </p>
@@ -110,7 +110,7 @@ export function AnalyzingAnimation({ onComplete, duration = 5000 }: Props) {
           className="h-full rounded-full"
           style={{
             width: started ? '100%' : '0%',
-            background: 'var(--color-flame-500)',
+            background: 'var(--color-accent)',
             transition: `width ${duration}ms linear`,
           }}
         />

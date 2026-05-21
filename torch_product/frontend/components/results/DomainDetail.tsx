@@ -503,7 +503,7 @@ export function DomainDetail({
                 {results.primary_bottleneck.domain ? DOMAIN_LABEL_FULL[results.primary_bottleneck.domain as DomainKey] : 'none'}
               </span>
               {' → '}
-              <span className="font-semibold" style={{ color: 'var(--color-flame-500)' }}>
+              <span className="font-semibold" style={{ color: 'var(--color-accent)' }}>
                 {whatIfResult.primary_bottleneck.domain ? DOMAIN_LABEL_FULL[whatIfResult.primary_bottleneck.domain as DomainKey] : 'none'}
               </span>
             </p>
@@ -515,12 +515,12 @@ export function DomainDetail({
       {whatIfOnlyFlags.length > 0 ? (
         <div
           className="mt-3 rounded-lg border p-4"
-          style={{ borderColor: '#f0c674', background: '#fff4e5' }}
+          style={{ borderColor: 'var(--color-warning-border)', background: 'var(--color-warning-bg)' }}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: '#8a6d3b' }}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-warning-fg)' }}>
             Warnings triggered by modifications
           </p>
-          <ul className="mt-2 space-y-1 text-[12px]" style={{ color: '#574016' }}>
+          <ul className="mt-2 space-y-1 text-[12px]" style={{ color: 'var(--color-warning-body)' }}>
             {whatIfOnlyFlags.map((f, i) => (
               <li key={i}>{f.message}</li>
             ))}
@@ -583,7 +583,7 @@ function ScoreColumn({
         {showModified ? (
           <>
             <span aria-hidden style={{ color: 'var(--color-ink-400)', fontSize: '22px' }}>→</span>
-            <span style={{ color: 'var(--color-flame-500)' }}>{modifiedValue}</span>
+            <span style={{ color: 'var(--color-accent)' }}>{modifiedValue}</span>
           </>
         ) : null}
       </p>
@@ -613,9 +613,9 @@ function WhatIfButton({
       title={disabled ? 'Not applicable at the current operating point' : undefined}
       className="flex flex-col gap-0.5 rounded-lg border px-4 py-3 text-left transition-[border-color,background-color,color,box-shadow,opacity]"
       style={{
-        borderColor: active ? 'var(--color-flame-500)' : 'var(--color-rule)',
-        background: active ? 'rgba(255, 90, 31, 0.08)' : 'var(--color-paper-100)',
-        boxShadow: active ? '0 0 0 1px var(--color-flame-500) inset' : 'none',
+        borderColor: active ? 'var(--color-accent)' : 'var(--color-rule)',
+        background: active ? 'var(--color-accent-muted)' : 'var(--color-paper-100)',
+        boxShadow: active ? '0 0 0 1px var(--color-accent) inset' : 'none',
         opacity: disabled ? 0.55 : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
@@ -636,7 +636,7 @@ function WhatIfButton({
         <span
           className="text-[11px] font-mono tabular-nums"
           style={{
-            color: active ? 'var(--color-flame-500)' : 'var(--color-ink-400)',
+            color: active ? 'var(--color-accent)' : 'var(--color-ink-400)',
           }}
         >
           {hint}
@@ -671,9 +671,9 @@ function Stepper({
     <div
       className="mt-2 flex items-center justify-between gap-4 rounded-lg border px-4 py-3"
       style={{
-        borderColor: modified ? 'var(--color-flame-500)' : 'var(--color-rule)',
+        borderColor: modified ? 'var(--color-accent)' : 'var(--color-rule)',
         background: 'var(--color-paper-100)',
-        boxShadow: modified ? '0 0 0 1px var(--color-flame-500) inset' : 'none',
+        boxShadow: modified ? '0 0 0 1px var(--color-accent) inset' : 'none',
       }}
     >
       <div className="flex min-w-0 flex-col">
@@ -694,7 +694,7 @@ function Stepper({
         <span
           className="min-w-[9ch] text-center text-[15px] font-semibold tabular-nums"
           style={{
-            color: modified ? 'var(--color-flame-500)' : 'var(--color-ink-900)',
+            color: modified ? 'var(--color-accent)' : 'var(--color-ink-900)',
           }}
         >
           {currentText}

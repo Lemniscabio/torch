@@ -87,9 +87,9 @@ function classify(form: Partial<AssessFormValues>): {
 }
 
 const COLOR: Record<Confidence, string> = {
-  high_confidence: '#34d399',
-  reliable: '#fbbf24',
-  directional: '#9ca3af',
+  high_confidence: 'var(--color-ink-900)',
+  reliable: 'var(--color-ink-600, var(--color-ink-500))',
+  directional: 'var(--color-ink-400)',
 };
 
 export function TransparencyIndicator() {

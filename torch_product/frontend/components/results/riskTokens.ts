@@ -13,10 +13,10 @@ export const RISK_LABEL: Record<RiskScore, string> = {
 };
 
 export const RISK_COLOR: Record<RiskScore, { fg: string; bg: string; ring: string }> = {
-  low:      { fg: '#059669', bg: 'rgba(5,150,105,0.10)',   ring: 'rgba(5,150,105,0.35)' },
-  moderate: { fg: '#b45309', bg: 'rgba(251,191,36,0.12)',  ring: 'rgba(180,83,9,0.32)' },
-  high:     { fg: '#c2410c', bg: 'rgba(251,146,60,0.12)',  ring: 'rgba(194,65,12,0.32)' },
-  critical: { fg: '#dc2626', bg: 'rgba(248,113,113,0.12)', ring: 'rgba(220,38,38,0.38)' },
+  low:      { fg: 'var(--color-ink-400)', bg: 'var(--color-paper-100)', ring: 'var(--color-rule)' },
+  moderate: { fg: 'var(--color-ink-500)', bg: 'var(--color-paper-200)', ring: 'var(--color-rule-strong)' },
+  high:     { fg: 'var(--color-ink-700)', bg: 'var(--color-paper-200)', ring: 'var(--color-ink-300)' },
+  critical: { fg: 'var(--color-ink-900)', bg: 'var(--color-accent-muted)', ring: 'var(--color-accent-ring)' },
 };
 
 export const RISK_DISTANCE: Record<RiskScore, number> = {

@@ -79,7 +79,7 @@ export default function DashboardPage() {
         <h2 className="text-section">Past assessments</h2>
 
         {error ? (
-          <p className="text-meta mt-3" style={{ color: 'var(--color-flame-700)' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--color-danger-fg)' }}>
             {error}
           </p>
         ) : null}
@@ -225,9 +225,9 @@ function DeleteAssessmentModal({
             className="btn"
             onClick={onConfirm}
             style={{
-              background: 'var(--color-flame-500)',
-              borderColor: 'var(--color-flame-500)',
-              color: '#fff',
+              background: 'var(--color-accent)',
+              borderColor: 'var(--color-accent)',
+              color: 'var(--color-paper-50)',
             }}
           >
             Delete

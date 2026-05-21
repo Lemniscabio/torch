@@ -108,7 +108,7 @@ export function LoginForm({ mode: initialMode, next }: { mode: Mode; next: strin
           <p
             role="alert"
             className="text-meta -mt-1"
-            style={{ color: 'var(--color-flame-700)' }}
+            style={{ color: 'var(--color-danger-fg)' }}
           >
             {formError}
           </p>

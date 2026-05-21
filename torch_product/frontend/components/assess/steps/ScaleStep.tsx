@@ -78,9 +78,9 @@ export function ScaleStep() {
                 onClick={() => applyMultiplier(mult)}
                 className="min-h-24 rounded-xl border px-5 py-4 text-center tabular-nums transition-[border-color,background-color,box-shadow,color,opacity]"
                 style={{
-                  borderColor: selected ? 'var(--color-flame-500)' : 'var(--color-rule)',
-                  background: selected ? 'rgba(255,90,31,0.08)' : 'var(--color-paper-100)',
-                  boxShadow: selected ? '0 0 0 1px var(--color-flame-500)' : 'none',
+                  borderColor: selected ? 'var(--color-accent)' : 'var(--color-rule)',
+                  background: selected ? 'var(--color-accent-muted)' : 'var(--color-paper-100)',
+                  boxShadow: selected ? '0 0 0 1px var(--color-accent)' : 'none',
                   color: vLabValid ? 'var(--color-ink-900)' : 'var(--color-ink-400)',
                   opacity: vLabValid ? 1 : 0.48,
                   cursor: vLabValid ? 'pointer' : 'not-allowed',
@@ -98,7 +98,7 @@ export function ScaleStep() {
           })}
         </div>
         {errors.v_target?.message ? (
-          <p className="mt-2 text-meta" style={{ color: 'var(--color-flame-500)' }}>
+          <p className="mt-2 text-meta" style={{ color: 'var(--color-accent)' }}>
             {errors.v_target.message}
           </p>
         ) : null}

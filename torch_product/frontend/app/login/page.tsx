@@ -32,7 +32,7 @@ function LoginScreen() {
       className="relative flex min-h-dvh flex-col items-center justify-center px-6 py-12"
       style={{ background: 'var(--color-paper-50)' }}
     >
-      {/* ambient glow behind the card */}
+      {/* subtle neutral depth behind the card */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -45,7 +45,7 @@ function LoginScreen() {
             transform: 'translate(-50%, -50%)',
             width: '600px',
             height: '400px',
-            background: 'radial-gradient(ellipse at center, rgba(255,90,31,0.07) 0%, transparent 70%)',
+            background: 'radial-gradient(ellipse at center, var(--color-accent-muted) 0%, transparent 70%)',
             filter: 'blur(40px)',
           }}
         />

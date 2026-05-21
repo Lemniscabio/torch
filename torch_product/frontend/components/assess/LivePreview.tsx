@@ -68,7 +68,7 @@ export function LivePreview() {
             {ratio && Number.isFinite(ratio) ? (
               <span
                 className="text-[10px] tabular-nums"
-                style={{ color: 'var(--color-flame-500)' }}
+                style={{ color: 'var(--color-accent)' }}
               >
                 {ratio < 1 ? '—' : `${ratio.toFixed(ratio >= 100 ? 0 : 1)}×`}
               </span>
@@ -92,7 +92,7 @@ export function LivePreview() {
             style={{
               borderColor: 'var(--color-rule)',
               background: 'var(--color-paper-100)',
-              color: 'var(--color-flame-500)',
+              color: 'var(--color-accent)',
             }}
             aria-hidden
           >

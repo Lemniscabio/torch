@@ -5,7 +5,7 @@
 // step. "Run risk assessment" lives at the bottom of step 4 — no separate Review
 // step, matching old/.
 
-import { Suspense, useCallback, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useFormContext } from 'react-hook-form';
@@ -22,7 +22,6 @@ import { ScaleStep } from '@/components/assess/steps/ScaleStep';
 import { VesselStep } from '@/components/assess/steps/VesselStep';
 import { ProcessStep } from '@/components/assess/steps/ProcessStep';
 import { TopNav } from '@/components/shell/TopNav';
-import { Wordmark } from '@/components/ui/Wordmark';
 import {
   STEPS,
   STEP_FIELDS,
@@ -67,6 +66,23 @@ export default function AssessPage() {
 function AssessHeader() {
   const auth = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false);
+    }
+    function onResize() {
+      if (window.innerWidth >= 768) setMenuOpen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [menuOpen]);
 
   if (auth.status === 'authed') {
     return <TopNav user={auth.user} />;
@@ -74,30 +90,45 @@ function AssessHeader() {
 
   return (
     <header
-      className="glass-surface sticky top-0 z-30 h-14"
-      style={{ borderBottom: '1px solid var(--color-rule)' }}
+      className="product-header sticky inset-x-0 top-0 z-40 overflow-visible border-b border-white/10 bg-black/55 backdrop-blur-[18px] shadow-[inset_0_-1px_0_rgba(255,255,255,0.06)]"
     >
-      <div className="mx-auto flex h-full max-w-[1200px] items-center justify-between gap-6 px-6">
-        <div className="flex items-center gap-8">
-          <Wordmark href="/assess" />
-          <nav className="hidden gap-6 md:flex">
-            <Link
-              href="/assess"
-              aria-current="page"
-              className="relative py-1 text-[14px]"
-              style={{ color: 'var(--color-ink-900)', fontWeight: 500 }}
-            >
-              New assessment
-              <span
-                aria-hidden
-                className="absolute -bottom-[15px] left-0 right-0 h-px"
-                style={{ background: 'var(--color-flame-500)' }}
-              />
-            </Link>
-          </nav>
-        </div>
+      <div className="relative z-10 flex items-center justify-between px-6 py-5 md:px-10 lg:px-14">
+        <Link
+          href="/assess"
+          className="group inline-flex items-end gap-2.5 transition-opacity duration-200 hover:opacity-85"
+          aria-label="Torch assessment"
+        >
+          <span className="text-[30px] leading-none font-semibold tracking-[-0.02em] text-white transition-colors duration-300">
+            Torch
+          </span>
+          <span className="flex flex-col items-start leading-none pb-[2px] text-white/70 transition-colors duration-300">
+            <span className="text-[7px] font-medium tracking-[0.02em] md:text-[8px]">by</span>
+            <span className="text-[9px] font-medium tracking-[-0.02em] md:text-[10px]">Lemnisca</span>
+          </span>
+        </Link>
 
-        <div className="flex items-center gap-3">
+        <nav className="hidden items-center gap-7 md:flex">
+          <Link
+            href="/dashboard"
+            className="group relative text-[14px] text-white/70 transition-[color,transform] duration-150 ease-out hover:text-white active:scale-[0.985]"
+          >
+            <span>Dashboard</span>
+            <span
+              aria-hidden
+              className="absolute -bottom-1 left-0 h-px w-0 bg-white transition-[width] duration-200 ease-out group-hover:w-full"
+            />
+          </Link>
+          <Link
+            href="/assess"
+            aria-current="page"
+            className="group relative text-[14px] font-medium text-white transition-[color,transform] duration-150 ease-out active:scale-[0.985]"
+          >
+            <span>New assessment</span>
+            <span aria-hidden className="absolute -bottom-1 left-0 h-px w-full bg-white" />
+          </Link>
+        </nav>
+
+        <div className="hidden items-center gap-3 md:flex">
           <button
             type="button"
             onClick={(e) => {
@@ -108,14 +139,74 @@ function AssessHeader() {
               });
             }}
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-[color:var(--color-paper-200)]"
-            style={{ color: 'var(--color-ink-500)' }}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-white transition-colors duration-200 hover:bg-white/10"
           >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
-          <Link href="/login?next=/results" className="btn btn-ghost">
+          <Link
+            href="/login?next=/results"
+            className="inline-flex items-center rounded-full border border-white/15 px-4 py-2 text-[14px] font-medium text-white/85 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
+          >
             Sign in
           </Link>
+        </div>
+
+        <div className="flex items-center gap-3 md:hidden">
+          <Link
+            href="/login?next=/results"
+            className="inline-flex items-center rounded-full bg-white px-3.5 py-2 text-[13px] font-medium text-black transition-[background-color,transform] duration-150 ease-out active:scale-[0.97]"
+          >
+            Sign in
+          </Link>
+          <button
+            type="button"
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-white transition-colors duration-200 hover:bg-white/10"
+          >
+            <HamburgerIcon open={menuOpen} />
+          </button>
+        </div>
+      </div>
+
+      <div
+        id="torch-nav-mobile"
+        role="menu"
+        className="md:hidden"
+        style={{
+          display: 'grid',
+          gridTemplateRows: menuOpen ? '1fr' : '0fr',
+          transition: 'grid-template-rows 260ms cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
+      >
+        <div style={{ overflow: 'hidden', minHeight: 0 }}>
+          <nav
+            className="relative z-10 flex flex-col gap-1 px-6 pb-6"
+            aria-label="Mobile primary"
+          >
+            <Link
+              href="/dashboard"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center justify-between rounded-xl px-3 py-3 text-[16px] font-medium text-white/85 transition-colors duration-150 hover:bg-white/5"
+            >
+              <span>Dashboard</span>
+            </Link>
+            <Link
+              onClick={() => setMenuOpen(false)}
+              href="/assess"
+              aria-current="page"
+              className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-3 text-[16px] font-medium text-white transition-colors duration-150"
+            >
+              <span>New assessment</span>
+              <span
+                aria-hidden
+                className="text-[12px] font-medium tracking-[0.06em] uppercase text-white/55"
+              >
+                Current
+              </span>
+            </Link>
+          </nav>
         </div>
       </div>
     </header>
@@ -304,6 +395,48 @@ function MoonIcon() {
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function HamburgerIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      fill="none"
+      aria-hidden
+      style={{ transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1)' }}
+    >
+      <line
+        x1="2"
+        y1="5"
+        x2="16"
+        y2="5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        style={{
+          transformOrigin: '9px 5px',
+          transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+          transform: open ? 'translateY(4px) rotate(45deg)' : 'none',
+        }}
+      />
+      <line
+        x1="2"
+        y1="13"
+        x2="16"
+        y2="13"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        style={{
+          transformOrigin: '9px 13px',
+          transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+          transform: open ? 'translateY(-4px) rotate(-45deg)' : 'none',
+        }}
       />
     </svg>
   );

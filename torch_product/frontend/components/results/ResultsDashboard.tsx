@@ -180,7 +180,7 @@ export function ResultsDashboard({ inputs, results, assessmentId, isExample = fa
           <p className="text-[13px]" style={{ color: 'var(--color-ink-500)' }}>
             This is a pre-loaded example assessment.
           </p>
-          <Link href="/assess" className="text-[13px] font-medium" style={{ color: 'var(--color-flame-500)' }}>
+          <Link href="/assess" className="text-[13px] font-medium" style={{ color: 'var(--color-accent)' }}>
             Assess your own process →
           </Link>
         </div>
@@ -220,7 +220,7 @@ export function ResultsDashboard({ inputs, results, assessmentId, isExample = fa
 
         <div className="mt-8 divide-y" style={{ borderColor: 'var(--color-rule)' }}>
           <section className="pb-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-flame-500)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-accent)' }}>
               Primary Bottleneck
             </p>
             <p className="mt-2 text-[15px] leading-relaxed" style={{ color: 'var(--color-ink-700)' }}>
@@ -229,7 +229,7 @@ export function ResultsDashboard({ inputs, results, assessmentId, isExample = fa
           </section>
 
           <section className="pt-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-flame-500)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--color-accent)' }}>
               Scale-Up Constraints
             </p>
             <p className="mt-2 text-[15px] leading-relaxed" style={{ color: 'var(--color-ink-700)' }}>

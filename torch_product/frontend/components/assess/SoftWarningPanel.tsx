@@ -92,7 +92,7 @@ export function SoftWarningPanel() {
         <span
           aria-hidden
           className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
-          style={{ background: '#fbbf24', color: '#1a1a1a' }}
+          style={{ background: 'var(--color-warning-fg)', color: 'var(--color-paper-50)' }}
         >
           !
         </span>
