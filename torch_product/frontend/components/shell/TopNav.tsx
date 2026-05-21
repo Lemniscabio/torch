@@ -16,9 +16,16 @@ const ITEMS: NavItem[] = [
 
 function isActiveRoute(href: string, pathname: string | null) {
   if (!pathname || href.startsWith('http') || href.startsWith('#')) return false;
-  if (href === '/') return pathname === '/';
-  if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const current = normalizeRoutePath(pathname);
+  const target = normalizeRoutePath(href);
+  if (target === '/') return current === '/';
+  if (target === '/dashboard') return current === '/dashboard' || current === '/';
+  return current === target || current.startsWith(`${target}/`);
+}
+
+function normalizeRoutePath(path: string) {
+  if (path === '/') return path;
+  return path.replace(/\/+$/, '');
 }
 
 function brandSuffixParts(suffix: string): { pre: string; rest: string } {
@@ -269,9 +276,10 @@ function NavLink({
       <span>{item.label}</span>
       <span
         aria-hidden
-        className={`absolute -bottom-1 left-0 h-px bg-white transition-[width] duration-200 ease-out group-hover:w-full ${
+        className={`absolute -bottom-1 left-0 h-px transition-[width] duration-200 ease-out group-hover:w-full ${
           active ? 'w-full' : 'w-0'
         }`}
+        style={{ background: 'currentColor' }}
       />
     </Link>
   );
