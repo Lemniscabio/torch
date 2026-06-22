@@ -2,6 +2,13 @@
 
 Bioreactor scale-up assessment tool. Users describe a lab-scale fermentation, the engine flags scale-up risks across mixing, oxygen transfer, heat transfer, and CO₂ stripping, and returns a structured risk report.
 
+> **Scope of this repo:** this is the **actual gated Torch product** — the full
+> application (Next.js frontend app + Express/Prisma backend + the `tea-core` engine),
+> not a marketing site. The Torch **landing page UI** lives in the
+> **`lemnisca_main_landing`** repo, alongside the Thrust and Tune landing pages, and is
+> deployed from there. Keep marketing-page work in `lemnisca_main_landing`; keep product
+> work here.
+
 **Live**
 - Frontend: <https://torch.lemnisca.bio>
 - Backend: <https://torch-backend-746208330214.us-central1.run.app>
