@@ -6,6 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { runAssessment, ruszkowskiMixingTime } from '../engine';
+import { deriveDesignJacketFlowLpm } from '../engine/heat/coefficients';
 import { KLA_CO2_O2_RATIO } from '../constants';
 import type { ProcessInputs } from '../types';
 
@@ -124,5 +125,19 @@ describe('change-plan invariants', () => {
     const theta = ruszkowskiMixingTime(2.0, 0.7, 500, 120 / 60);
     expect(Number.isFinite(theta)).toBe(true);
     expect(theta).toBeGreaterThan(0);
+  });
+
+  // Scale-dependent cooling: design jacket flow grows with vessel diameter, and a
+  // normal high-OUR target no longer reports zero cooling from coolant starvation.
+  it('design jacket flow scales up with vessel diameter', () => {
+    const small = deriveDesignJacketFlowLpm(0.2);
+    const large = deriveDesignJacketFlowLpm(1.7);
+    expect(small).toBeGreaterThan(0);
+    expect(large).toBeGreaterThan(small);
+  });
+
+  it('target scale reports non-zero cooling for a normal high-OUR case', () => {
+    const hot = runAssessment({ ...baseInput, our_mode: 'measured', our_measured: 120 });
+    expect(hot.heat.target.q_cool_max).toBeGreaterThan(0);
   });
 });

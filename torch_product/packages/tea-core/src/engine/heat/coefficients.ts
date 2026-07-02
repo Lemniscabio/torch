@@ -6,7 +6,7 @@ import {
   CHILTON_DREW_C,
   JACKET_WATER_MU_PA_S, JACKET_WATER_K_W_MK, JACKET_WATER_PR, WATER_RHO_KG_M3,
   JACKET_GAP_FRACTION, JACKET_GAP_MIN_M, JACKET_GAP_MAX_M,
-  JACKET_EFFECTIVE_AREA_FRACTION, JACKET_HO_MIN_W_M2K,
+  JACKET_EFFECTIVE_AREA_FRACTION, JACKET_HO_MIN_W_M2K, JACKET_DESIGN_VELOCITY_M_S,
   VESSEL_GLASS_THRESHOLD_LITRES, GLASS_K_W_MK, GLASS_WALL_M, SS316_K_W_MK, SS316_WALL_M,
 } from "../../constants";
 
@@ -50,16 +50,31 @@ export interface JacketFilmResult {
   u_jkt:   number; // m/s — water velocity in annulus
 }
 
+// Effective annular flow geometry, shared by the h_o correlation and the
+// design-flow sizing so the two stay self-consistent.
+function jacketAnnulusGeometry(D_T: number): { gap_m: number; A_c: number } {
+  const gap_m     = Math.min(JACKET_GAP_MAX_M, Math.max(JACKET_GAP_MIN_M, JACKET_GAP_FRACTION * D_T));
+  // Open-annulus A_c can be too large for real jackets with flow-directing
+  // internals, which underpredicts velocity/Re; scale by the effective fraction.
+  const A_annulus = Math.PI * gap_m * (D_T + gap_m);            // ideal annulus cross-section (m²)
+  const A_c       = A_annulus * JACKET_EFFECTIVE_AREA_FRACTION; // effective hydraulic flow area (m²)
+  return { gap_m, A_c };
+}
+
+// Cooling-water flowrate sized to a fixed design annular velocity, so jacket flow
+// scales with vessel size instead of a fixed absolute value. Reuses the h_o flow
+// area for consistency; at v ≈ 1 m/s this keeps jacket Re turbulent at scale.
+export function deriveDesignJacketFlowLpm(D_T: number): number {
+  const { A_c } = jacketAnnulusGeometry(D_T);
+  return JACKET_DESIGN_VELOCITY_M_S * A_c * 60000; // (m/s · m²) m³/s → L/min
+}
+
 export function deriveJacketFilmCoeff(
   D_T:          number, // m
   flowrate_lpm: number, // L/min
 ): JacketFilmResult {
-  const gap_m    = Math.min(JACKET_GAP_MAX_M, Math.max(JACKET_GAP_MIN_M, JACKET_GAP_FRACTION * D_T));
+  const { gap_m, A_c } = jacketAnnulusGeometry(D_T);
   const D_h      = 2 * gap_m;                                           // hydraulic diameter (thin annulus)
-  // Open-annulus A_c can be too large for real jackets with flow-directing internals,
-  // which underpredicts velocity/Re and drives h_o unrealistically low.
-  const A_annulus = Math.PI * gap_m * (D_T + gap_m);                   // ideal annulus cross-section (m²)
-  const A_c      = A_annulus * JACKET_EFFECTIVE_AREA_FRACTION;         // effective hydraulic flow area (m²)
   const F_m3s    = flowrate_lpm / 60000;                                // m³/s
   const u_jkt    = A_c > 0 ? F_m3s / A_c : 0;                         // m/s
   const Re_jkt   = (WATER_RHO_KG_M3 * u_jkt * D_h) / JACKET_WATER_MU_PA_S;

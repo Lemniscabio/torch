@@ -179,7 +179,7 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
           mathNumerator: <FormulaTerm symbol="Q" subscript="cooling" />,
           mathDenominator: <FormulaTerm symbol="Q" subscript="generated" />,
           textNumerator: 'Available heat removal capacity (kW)',
-          textDenominator: 'Total heat generation — metabolic + impeller (kW)',
+          textDenominator: 'Total heat generation (metabolic + impeller) (kW)',
         },
         thresholds: [
           { label: 'critical', range: '< 1.0' },

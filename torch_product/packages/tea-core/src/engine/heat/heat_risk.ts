@@ -9,8 +9,9 @@ import type {
   Confidence,
   AssessmentFlag,
 } from "../../types";
-import { HEAT_THRESHOLDS, INPUT_DEFAULTS, U_RELATIVE_UNCERTAINTY } from "../../constants";
+import { HEAT_THRESHOLDS, U_RELATIVE_UNCERTAINTY } from "../../constants";
 import { runHeatCapacityCheck, type HeatCapacityResult } from "./heat_capacity";
+import { deriveDesignJacketFlowLpm } from "./coefficients";
 import type { ReactorScaleConfig, ReactorScaleConfigs } from "../reactor_configs";
 
 // Margin form for consistency with other domains:
@@ -39,9 +40,8 @@ export function calculateHeatRisk(
   reactorConfigs: ReactorScaleConfigs,
 ): { result: HeatRiskResult; flags: AssessmentFlag[] } {
   const flags: AssessmentFlag[] = [];
-  const flowrate_lpm = inputs.cooling_water_flowrate_lpm ?? INPUT_DEFAULTS.cooling_water_flowrate_lpm;
-  const labRaw = calculateScaleHeat(inputs, derived, reactorConfigs.lab, flowrate_lpm);
-  const targetRaw = calculateScaleHeat(inputs, derived, reactorConfigs.target, flowrate_lpm);
+  const labRaw = calculateScaleHeat(inputs, derived, reactorConfigs.lab);
+  const targetRaw = calculateScaleHeat(inputs, derived, reactorConfigs.target);
   const lab = mapScaleHeat(labRaw);
   const target = mapScaleHeat(targetRaw);
 
@@ -101,8 +101,12 @@ function calculateScaleHeat(
   inputs: ProcessInputs,
   derived: DerivedParameters,
   scale: ReactorScaleConfig,
-  flowrate_lpm: number,
 ): HeatCapacityResult {
+  // Cooling-water flow scales with vessel size via a design jacket velocity,
+  // unless the user supplies an explicit override. A fixed absolute flow starves
+  // large vessels (spurious critical) and understates jacket-side h_o.
+  const flowrate_lpm = inputs.cooling_water_flowrate_lpm
+    ?? deriveDesignJacketFlowLpm(scale.geometry.t_diameter);
   return runHeatCapacityCheck({
     organism: inputs.organism_species,
     our_mmol_Lh: derived.our_peak,

@@ -72,6 +72,12 @@ export const JACKET_EFFECTIVE_AREA_FRACTION = 0.80;
 // Prevents unrealistically low h_o from dominating U when jacket flow is laminar.
 export const JACKET_HO_MIN_W_M2K = 75;
 
+// Design annular velocity used to size the cooling-water flowrate per scale, so
+// jacket flow scales with vessel size instead of being a fixed absolute value.
+// ~1 m/s keeps the annulus in the turbulent regime for the Dittus-Boelter h_o
+// correlation and gives a realistic coolant ΔT at scale.
+export const JACKET_DESIGN_VELOCITY_M_S = 1.0; // m/s
+
 // Additional empirical thermal resistances for biological broth and cooling-water service.
 // These prevent idealized film + clean-wall calculations from overpredicting practical U.
 export const BROTH_FOULING_R_M2K_W = 0.0003;

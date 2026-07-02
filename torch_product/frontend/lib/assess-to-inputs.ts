@@ -94,6 +94,7 @@ export function toProcessInputs(form: AssessFormValues): ProcessInputs {
         : INPUT_DEFAULTS.temperature_bacteria,
     ),
     t_cw_inlet: num(form.t_cw_inlet, INPUT_DEFAULTS.t_cw_inlet),
-    cooling_water_flowrate_lpm: INPUT_DEFAULTS.cooling_water_flowrate_lpm,
+    // cooling_water_flowrate_lpm intentionally omitted: the engine derives a
+    // scale-dependent jacket flow (design velocity) when it is undefined.
   };
 }
