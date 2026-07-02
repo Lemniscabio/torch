@@ -4,6 +4,7 @@
 // ratio < 1 → heat removal insufficient; suggest internal cooling coils.
 
 import type { ImpellerType, OrganismSpecies } from "../../types";
+import { IMPELLER_HEAT_FRACTION } from "../../constants";
 import { deriveMetabolicHeat, deriveCoolingWaterOutlet, deriveLmtd } from "./heat_balance";
 import { deriveJacketArea }     from "./area";
 import { deriveBrothFilmCoeff, deriveJacketFilmCoeff, getWallProperties } from "./coefficients";
@@ -25,11 +26,14 @@ export interface HeatCapacityInputs {
   N_rps:          number;  // rps
   mu:             number;  // Pa·s — broth viscosity
   impeller_type:  ImpellerType;
+  impeller_power_w: number; // W — gassed shaft power (all impellers), dissipated as heat
 }
 
 export interface HeatCapacityResult {
   // Heat generation
   Q_metabolic_kW: number;
+  Q_impeller_kW:  number;  // impeller power dissipated as heat
+  Q_generated_kW: number;  // metabolic + impeller
   // Cooling water
   t_cw_out:       number;
   dt_cw:          number;
@@ -51,9 +55,11 @@ export interface HeatCapacityResult {
 
 export function runHeatCapacityCheck(inputs: HeatCapacityInputs): HeatCapacityResult {
   const Q_metabolic_kW = deriveMetabolicHeat(inputs.our_mmol_Lh, inputs.volume_litres, inputs.organism);
+  const Q_impeller_kW  = (IMPELLER_HEAT_FRACTION * inputs.impeller_power_w) / 1000; // W → kW
+  const Q_generated_kW = Q_metabolic_kW + Q_impeller_kW;
 
   const { t_cw_out, dt_cw, m_cw_kgs: _ } = deriveCoolingWaterOutlet(
-    Q_metabolic_kW, inputs.flowrate_lpm, inputs.t_cw_in,
+    Q_generated_kW, inputs.flowrate_lpm, inputs.t_cw_in,
   );
 
   const lmtd = deriveLmtd(inputs.t_process, inputs.t_cw_in, t_cw_out);
@@ -71,11 +77,13 @@ export function runHeatCapacityCheck(inputs: HeatCapacityInputs): HeatCapacityRe
   );
 
   const Q_available_kW = (u_result.U * area.A_total * lmtd) / 1000; // W → kW
-  const ratio          = Q_metabolic_kW > 0 ? Q_available_kW / Q_metabolic_kW : Infinity;
+  const ratio          = Q_generated_kW > 0 ? Q_available_kW / Q_generated_kW : Infinity;
   const sufficient     = ratio >= 1;
 
   return {
     Q_metabolic_kW,
+    Q_impeller_kW,
+    Q_generated_kW,
     t_cw_out,
     dt_cw,
     area,

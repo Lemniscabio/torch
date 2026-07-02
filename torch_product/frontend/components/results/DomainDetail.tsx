@@ -177,9 +177,9 @@ function specFor(d: DomainKey, r: PartialAssessmentResult): DetailSpec {
         question: 'Can the reactor withdraw all the metabolic heat at scale?',
         fraction: {
           mathNumerator: <FormulaTerm symbol="Q" subscript="cooling" />,
-          mathDenominator: <FormulaTerm symbol="Q" subscript="metabolic" />,
+          mathDenominator: <FormulaTerm symbol="Q" subscript="generated" />,
           textNumerator: 'Available heat removal capacity (kW)',
-          textDenominator: 'Metabolic heat generation (kW)',
+          textDenominator: 'Total heat generation — metabolic + impeller (kW)',
         },
         thresholds: [
           { label: 'critical', range: '< 1.0' },

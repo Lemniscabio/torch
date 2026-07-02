@@ -40,6 +40,11 @@ export function deriveLmtd(
   const dt1 = t_proc - t_cw_in;
   const dt2 = t_proc - t_cw_out;
   if (Math.abs(dt1 - dt2) < 1e-3 * Math.abs(dt1 + dt2) / 2) return (dt1 + dt2) / 2;
-  if (dt1 <= 0 || dt2 <= 0) return Math.max(dt1, dt2); // degenerate: CW hotter than broth
+  // Degenerate: cooling water would exit at/above broth temperature, so there is
+  // no (or reversed) driving force. Return 0 rather than Math.max(dt1, dt2), which
+  // previously over-reported available cooling (Q_available = U·A·dt1) in exactly
+  // the under-capacity regime that should score critical. Zero LMTD drives
+  // Q_available → 0 and trips the heat-risk driving-force flag (dt_lm <= 0).
+  if (dt1 <= 0 || dt2 <= 0) return 0;
   return (dt1 - dt2) / Math.log(dt1 / dt2);
 }

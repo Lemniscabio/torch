@@ -61,9 +61,9 @@ export function runWhatIf(inputs: ProcessInputs, params: WhatIfParams): WhatIfRe
   let heatMarginStd = heatResult.target?.heat_transfer_margin_std ?? heatResult.heat_transfer_margin_std ?? 0;
 
   if (params.active.has("add_internal_cooling_coils")) {
-    const qMet  = heatResult.q_metabolic;
+    const qGen  = heatResult.q_generated ?? heatResult.q_metabolic;
     heatCoolMax = heatCoolMax * 1.5;
-    heatMargin  = qMet > 0 ? heatCoolMax / qMet : Infinity;
+    heatMargin  = qGen > 0 ? heatCoolMax / qGen : Infinity;
     heatMarginStd = Number.isFinite(heatMargin) ? heatMarginStd * 1.5 : 0; // rough scaling
     heatScore   = scoreHeatMargin(heatMargin);
   }

@@ -155,25 +155,33 @@ function calculateScaleCo2(
   const cer_mol_h = (cer / 1000) * v_liquid_l;
   const y_co2_out = Math.min(Y_CO2_INLET + cer_mol_h / n_dot_gas_mol, MAX_CO2_MOLE_FRACTION);
 
-  const pco2_gas_in  = Y_CO2_INLET * ATMOSPHERIC_PRESSURE_BAR;
+  const dp_hydro = RHO * G * scale.geometry.h_liquid;
+  // Head is a gas-side compression effect only: sparged gas enters compressed at
+  // the vessel floor, so its CO₂ partial pressure is highest at the bottom and
+  // decays to atmospheric at the top. Applying head through the log-mean of the
+  // compressed-bottom inlet and atmospheric-top outlet gives the depth-averaged
+  // gas-side driving pressure — the physically correct form (see notebook
+  // co2_pco2_bottom_bar), rather than scaling the whole bulk pCO₂ by head.
+  const p_total_bottom_bar = ATMOSPHERIC_PRESSURE_BAR * (ATMOSPHERIC_PRESSURE_PA + dp_hydro) / ATMOSPHERIC_PRESSURE_PA;
+  const pco2_gas_in  = Y_CO2_INLET * p_total_bottom_bar;       // inlet gas compressed at the bottom
   const pco2_gas_out = y_co2_out   * ATMOSPHERIC_PRESSURE_BAR; // outlet exits at top of vessel, atmospheric
   const pco2_gas_avg = logMean(pco2_gas_out, pco2_gas_in);
 
-  const pco2_gas_avg_atm = pco2_gas_avg / ATMOSPHERIC_PRESSURE_BAR;
-  const pco2_bulk_atm = pco2_gas_avg_atm + (cer / 1000) / (kla_co2 * H_CO2);
-  const pco2_bulk = pco2_bulk_atm * ATMOSPHERIC_PRESSURE_BAR;
-  const dp_hydro = RHO * G * scale.geometry.h_liquid;
-  const hydro_factor = (ATMOSPHERIC_PRESSURE_PA + dp_hydro) / ATMOSPHERIC_PRESSURE_PA;
-  const pco2_bottom = pco2_bulk * hydro_factor;
+  // Metabolic accumulation (dissolved-CO₂ driving contribution) is not a
+  // gas-compression effect, so it is ADDED after the head-corrected gas driving
+  // pressure — not multiplied by the hydrostatic head.
+  const pco2_bulk = ATMOSPHERIC_PRESSURE_BAR * (cer / 1000) / (H_CO2 * kla_co2);
+  const pco2_bottom = pco2_gas_avg + pco2_bulk;
   const pco2_margin = pco2_critical / pco2_bottom;
   const margin_score = scorePco2Margin(pco2_margin);
   const score = margin_score;
 
-  // Uncertainty propagation: pco2_bulk = C + B/kla_co2 where B = ATM_BAR*(cer/1000)/H_CO2
+  // Uncertainty propagation: pco2_bottom = pco2_gas_avg + B/kla_co2, where
+  // B = ATM_BAR*(cer/1000)/H_CO2 and the gas-side term is treated as certain.
   const sigma_kla_co2 = KLA_CO2_O2_RATIO * scale.kla_ensemble.std;
   const B_bulk = ATMOSPHERIC_PRESSURE_BAR * (cer / 1000) / H_CO2;
   const pco2_bulk_std = stdAffineInverse(B_bulk, kla_co2, sigma_kla_co2);
-  const pco2_bottom_std = pco2_bulk_std * hydro_factor;
+  const pco2_bottom_std = pco2_bulk_std; // head no longer scales the accumulation term
   const pco2_margin_std = pco2_bottom > 0
     ? pco2_margin * (pco2_bottom_std / pco2_bottom)
     : 0;

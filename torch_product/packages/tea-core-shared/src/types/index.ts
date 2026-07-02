@@ -260,11 +260,13 @@ export interface Co2RiskResult {
 
 export interface HeatScaleRiskResult {
   q_metabolic: number;                      // Metabolic heat generation (kW)
+  q_impeller: number;                       // Impeller power dissipated as heat (kW)
+  q_generated: number;                      // Total heat generation = metabolic + impeller (kW)
   a_jacket: number;                         // Jacket area (m^2)
   dt_lm: number;                            // Log-mean temperature difference (K)
   q_cool_max: number;                       // Available cooling capacity (kW)
-  heat_ratio: number;                       // Q_metabolic / Q_cool_max
-  heat_transfer_margin: number;             // Q_cool_max / Q_metabolic
+  heat_ratio: number;                       // Q_generated / Q_cool_max
+  heat_transfer_margin: number;             // Q_cool_max / Q_generated
   heat_transfer_margin_std: number;         // 1-σ from U correlation uncertainty
   margin_score: RiskScore;                  // risk score derived from heat_transfer_margin
   score: RiskScore;                         // scale score (same as margin_score)
@@ -285,11 +287,13 @@ export interface HeatRiskResult {
   score: RiskScore;
   margin_score?: RiskScore;                 // risk score derived from heat_transfer_margin
   q_metabolic: number;                      // Metabolic heat generation (kW)
+  q_impeller: number;                       // Impeller power dissipated as heat (kW)
+  q_generated: number;                      // Total heat generation = metabolic + impeller (kW)
   a_jacket: number;                         // Jacket surface area (m²)
   dt_lm: number;                            // Log-mean temperature difference (K)
   q_cool_max: number;                       // Maximum cooling capacity (kW)
-  heat_ratio: number;                       // Q_metabolic / Q_cool_max
-  heat_transfer_margin?: number;            // Q_cool_max / Q_metabolic; lower => higher risk
+  heat_ratio: number;                       // Q_generated / Q_cool_max
+  heat_transfer_margin?: number;            // Q_cool_max / Q_generated; lower => higher risk
   heat_transfer_margin_std?: number;        // 1-σ from U correlation uncertainty
   t_cw_outlet?: number;                     // Computed cooling water outlet temp (°C) — Stage 5
   u_overall?: number;                       // Overall U from film/wall resistances (W/m²·K)
