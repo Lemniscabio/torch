@@ -5,7 +5,8 @@
 // Run with: cd packages/tea-core && npm install && npm test
 
 import { describe, it, expect } from 'vitest';
-import { runAssessment } from '../engine';
+import { runAssessment, ruszkowskiMixingTime } from '../engine';
+import { KLA_CO2_O2_RATIO } from '../constants';
 import type { ProcessInputs } from '../types';
 
 const baseInput: ProcessInputs = {
@@ -96,5 +97,32 @@ describe('runAssessment — measured OUR path', () => {
   it('uses measured OUR when provided', () => {
     const out = runAssessment({ ...baseInput, our_mode: 'measured', our_measured: 120 });
     expect(out.derived.our_peak).toBeCloseTo(120, 1);
+  });
+});
+
+describe('change-plan invariants', () => {
+  const out = runAssessment(baseInput);
+
+  // Change 3: total heat generation = metabolic + impeller, and impeller term is real.
+  it('heat generation is metabolic + impeller at both scales', () => {
+    for (const scale of [out.heat.lab, out.heat.target]) {
+      expect(scale).toBeDefined();
+      expect(scale!.q_generated).toBeCloseTo(scale!.q_metabolic + scale!.q_impeller, 6);
+      expect(scale!.q_impeller).toBeGreaterThan(0);
+      expect(scale!.q_generated).toBeGreaterThanOrEqual(scale!.q_metabolic);
+    }
+  });
+
+  // 4D: kLa_CO2/kLa_O2 uses the D^0.5 penetration-theory ratio (~0.951), not 0.905.
+  it('KLA_CO2_O2_RATIO is the sqrt of the diffusivity ratio', () => {
+    expect(KLA_CO2_O2_RATIO).toBeCloseTo(Math.sqrt(1.9e-9 / 2.1e-9), 6);
+  });
+
+  // Change 1 + 4A: ruszkowskiMixingTime requires a real N and returns a finite,
+  // positive mixing time (the old N_rps=1 placeholder is gone).
+  it('ruszkowskiMixingTime returns a finite positive theta at a real N', () => {
+    const theta = ruszkowskiMixingTime(2.0, 0.7, 500, 120 / 60);
+    expect(Number.isFinite(theta)).toBe(true);
+    expect(theta).toBeGreaterThan(0);
   });
 });

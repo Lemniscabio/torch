@@ -86,3 +86,7 @@ export const U_OVERALL_MAX_SS_W_M2K = 400;
 
 /** Relative uncertainty on U. Wilkinson-class jacket correlations validated to ±20%. */
 export const U_RELATIVE_UNCERTAINTY = 0.20;
+
+// Fraction of gassed impeller shaft power that dissipates into the broth as heat.
+// All shaft power ultimately degrades to heat in the liquid, so 1.0.
+export const IMPELLER_HEAT_FRACTION = 1.0;

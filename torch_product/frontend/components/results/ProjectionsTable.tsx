@@ -129,10 +129,10 @@ function rows(inputs: ProcessInputs, r: PartialAssessmentResult): Row[] {
       target: fmtAuto(targetPco2),
     },
     {
-      label: 'Metabolic heat (kW)',
-      lab: fmtAuto(r.heat.lab?.q_metabolic),
-      pilot: fmtAuto(midNumber(r.heat.lab?.q_metabolic, r.heat.target?.q_metabolic ?? r.heat.q_metabolic)),
-      target: fmtAuto(r.heat.target?.q_metabolic ?? r.heat.q_metabolic),
+      label: 'Heat generation (kW)',
+      lab: fmtAuto(r.heat.lab?.q_generated),
+      pilot: fmtAuto(midNumber(r.heat.lab?.q_generated, r.heat.target?.q_generated ?? r.heat.q_generated)),
+      target: fmtAuto(r.heat.target?.q_generated ?? r.heat.q_generated),
     },
     {
       label: 'Cooling capacity (kW)',

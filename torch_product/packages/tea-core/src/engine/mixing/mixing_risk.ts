@@ -13,16 +13,18 @@ import type { ReactorScaleConfig } from "../reactor_configs";
 import { computeMixingTimeEnsemble } from "./mixing_correlations";
 
 // Exported for external consumers (ResultsDashboard, PdfReport projection rows).
-// Uses Ruszkowski only — single-correlation shortcut for display, not risk scoring.
-export function ruszkowskiMixingTime(t_diameter: number, d_imp: number, pv: number): number {
+// Returns the ensemble-mean mixing time for a single call. The real agitation
+// speed MUST be supplied: both correlations depend on N (Ruszkowski divides by
+// N_rps directly; Grenville-Nienow carries N through the power-dissipation term),
+// so the previous `N_rps = 1` placeholder produced a wrong displayed θ_mix.
+export function ruszkowskiMixingTime(t_diameter: number, d_imp: number, pv: number, N_rps: number): number {
   const ensemble = computeMixingTimeEnsemble({
     T: t_diameter,
     D: d_imp,
-    N_rps: 1, // N_rps not needed by Ruszkowski/Cooke; Grenville-Nienow will be out of range but mean still valid
+    N_rps,
     pv_w_m3: pv,
     impeller_type: "rushton", // conservative default for single-call use
   });
-  // Return the ensemble mean (dominated by Ruszkowski/Cooke which don't use N_rps)
   return ensemble.mean;
 }
 

@@ -46,11 +46,13 @@ export function calculateHeatRisk(
   const target = mapScaleHeat(targetRaw);
 
   const q_metabolic = target.q_metabolic;
+  const q_impeller = target.q_impeller;
+  const q_generated = target.q_generated;
   const a_jacket = target.a_jacket;
   const dt_lm = target.dt_lm;
   const q_cool_max = target.q_cool_max;
-  const heat_ratio = q_cool_max > 0 ? q_metabolic / q_cool_max : Infinity;
-  const heat_transfer_margin = q_metabolic > 0 ? q_cool_max / q_metabolic : Infinity;
+  const heat_ratio = q_cool_max > 0 ? q_generated / q_cool_max : Infinity;
+  const heat_transfer_margin = q_generated > 0 ? q_cool_max / q_generated : Infinity;
   const margin_score = scoreHeatMargin(heat_transfer_margin);
   const score = margin_score;
 
@@ -66,6 +68,8 @@ export function calculateHeatRisk(
     result: {
       score,
       q_metabolic,
+      q_impeller,
+      q_generated,
       a_jacket,
       dt_lm,
       q_cool_max,
@@ -112,11 +116,12 @@ function calculateScaleHeat(
     N_rps: scale.rpm / 60,
     mu: derived.mu,
     impeller_type: inputs.impeller_type,
+    impeller_power_w: scale.power_w,
   });
 }
 
 function mapScaleHeat(heat: HeatCapacityResult): HeatScaleRiskResult {
-  const heat_transfer_margin     = heat.Q_metabolic_kW > 0 ? heat.Q_available_kW / heat.Q_metabolic_kW : Infinity;
+  const heat_transfer_margin     = heat.Q_generated_kW > 0 ? heat.Q_available_kW / heat.Q_generated_kW : Infinity;
   const heat_transfer_margin_std = Number.isFinite(heat_transfer_margin)
     ? heat_transfer_margin * U_RELATIVE_UNCERTAINTY
     : 0;
@@ -125,10 +130,12 @@ function mapScaleHeat(heat: HeatCapacityResult): HeatScaleRiskResult {
 
   return {
     q_metabolic: heat.Q_metabolic_kW,
+    q_impeller: heat.Q_impeller_kW,
+    q_generated: heat.Q_generated_kW,
     a_jacket: heat.area.A_total,
     dt_lm: heat.lmtd,
     q_cool_max: heat.Q_available_kW,
-    heat_ratio: heat.Q_available_kW > 0 ? heat.Q_metabolic_kW / heat.Q_available_kW : Infinity,
+    heat_ratio: heat.Q_available_kW > 0 ? heat.Q_generated_kW / heat.Q_available_kW : Infinity,
     heat_transfer_margin,
     heat_transfer_margin_std,
     margin_score,

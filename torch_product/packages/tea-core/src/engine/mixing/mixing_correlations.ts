@@ -21,11 +21,17 @@ export interface MixingTimeEnsembleParams {
   impeller_type: ImpellerType;
 }
 
-// Grenville-Nienow (2002): θ95 · N = 5.9 · T^(2/3) · ε^(-1/3) · (D/T)^(-1/3)  =  5.9 · T / (N · ε^(1/3) · D^(1/3))
+// Grenville-Nienow (2002), energy-dissipation form:
+//   θ₉₅ = 5.9 · T^(2/3) · ε^(-1/3) · (D/T)^(-1/3)   [seconds]
+// This group already has units of seconds and already carries the full
+// N-dependence through ε = P/V/ρ ∝ N³D², so it IS θ₉₅ — not the dimensionless
+// mixing number θ₉₅·N. No explicit division by N_rps (the earlier `/ N_rps` was
+// dimensionally wrong; it reduces algebraically to 5.9·Po^(-1/3)·(T/D)²·N⁻¹, i.e.
+// the N⁻¹ is already inside the energy form). N_rps is kept only for the guard.
 function grenvilleNienow(T: number, D: number, pv_w_m3: number, N_rps: number): number {
   const epsilon = pv_w_m3 / RHO;
   if (epsilon <= 0 || D <= 0 || N_rps <= 0) return Infinity;
-  return (5.9 * Math.pow(T, 2 / 3) * Math.pow(epsilon, -1 / 3) * Math.pow(D / T, -1 / 3)) / N_rps;
+  return 5.9 * Math.pow(T, 2 / 3) * Math.pow(epsilon, -1 / 3) * Math.pow(D / T, -1 / 3);
 }
 
 

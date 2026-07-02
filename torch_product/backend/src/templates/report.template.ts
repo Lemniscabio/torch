@@ -471,6 +471,8 @@ function buildDomainSpecs(r: PartialAssessmentResult): DomainSpec[] {
       targetScore: r.heat.target?.score ?? r.heat.score,
       metrics: [
         { label: "Metabolic heat — target", value: fmt(r.heat.target?.q_metabolic ?? r.heat.q_metabolic, 1, "kW") },
+        { label: "Impeller heat — target",  value: fmt(r.heat.target?.q_impeller ?? r.heat.q_impeller, 1, "kW") },
+        { label: "Total heat generation",   value: fmt(r.heat.target?.q_generated ?? r.heat.q_generated, 1, "kW") },
         { label: "Cooling capacity",        value: fmt(r.heat.q_cool_max, 1, "kW") },
         { label: "Jacket area",             value: fmt(r.heat.a_jacket, 2, "m²") },
       ],
@@ -554,10 +556,10 @@ function projectionsSection(inputs: ProcessInputs, r: PartialAssessmentResult): 
       target: fmtAuto(targetPco2),
     },
     {
-      label: "Metabolic heat (kW)",
-      lab: fmtAuto(r.heat.lab?.q_metabolic),
-      pilot: fmtAuto(midNumber(r.heat.lab?.q_metabolic, r.heat.target?.q_metabolic ?? r.heat.q_metabolic)),
-      target: fmtAuto(r.heat.target?.q_metabolic ?? r.heat.q_metabolic),
+      label: "Heat generation (kW)",
+      lab: fmtAuto(r.heat.lab?.q_generated),
+      pilot: fmtAuto(midNumber(r.heat.lab?.q_generated, r.heat.target?.q_generated ?? r.heat.q_generated)),
+      target: fmtAuto(r.heat.target?.q_generated ?? r.heat.q_generated),
     },
     {
       label: "Cooling capacity (kW)",

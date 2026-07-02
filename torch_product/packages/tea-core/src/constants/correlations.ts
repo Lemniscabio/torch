@@ -20,8 +20,10 @@ export const RUSZKOWSKI_CONSTANT = 5.9;
 
 // --- CO₂ stripping (R4) ---
 
-/** kLa_CO₂ / kLa_O₂ ratio */
-export const KLA_CO2_O2_RATIO = 1.9e-9 / 2.1e-9; // CO2/O2 diffusivity ratio at 25°C
+/** kLa_CO₂ / kLa_O₂ ratio.
+ *  Penetration / surface-renewal theory gives kLa ∝ D^0.5, so the ratio is
+ *  (D_CO₂/D_O₂)^0.5 ≈ 0.951, not the plain diffusivity ratio (0.905). */
+export const KLA_CO2_O2_RATIO = Math.sqrt(1.9e-9 / 2.1e-9); // (CO2/O2 diffusivity ratio at 25°C)^0.5
 
 /** CO₂ inhibitory threshold (bar) — used in R4 scoring */
 export const CO2_INHIBITORY_THRESHOLD = 0.15;
