@@ -8,6 +8,8 @@ import { sendPasswordResetEmail } from "./email.service";
 
 const SALT_ROUNDS = 12;
 const MIN_PASSWORD_LENGTH = 8;
+// DEMO (email-only gate): fixed fallback password for email-only signups.
+const DEMO_DEFAULT_PASSWORD = "12345678";
 const RESET_TOKEN_BYTES = 32;
 const RESET_TOKEN_TTL_MINUTES = 30;
 
@@ -28,12 +30,11 @@ function buildResetUrl(token: string) {
   return url.toString();
 }
 
-export async function signup(email: string, password: string) {
+export async function signup(email: string, password?: string) {
   const check = validateWorkEmail(email);
   if (!check.valid) {
     throw { status: 400, message: check.error ?? "Invalid email." };
   }
-  validatePassword(password);
 
   const normalisedEmail = email.toLowerCase().trim();
   const domain = extractDomain(normalisedEmail);
@@ -42,11 +43,29 @@ export async function signup(email: string, password: string) {
     where: { email: normalisedEmail },
   });
 
+  // DEMO (email-only gate): with no password to verify, a returning email
+  // just re-opens a session instead of hitting a 409 dead-end.
   if (existing) {
-    throw { status: 409, message: "An account with this email already exists. Please sign in." };
+    const token = signToken({ userId: existing.id, email: existing.email });
+    return {
+      id: existing.id,
+      email: existing.email,
+      company_domain: existing.company_domain,
+      token,
+    };
   }
 
-  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  // DEMO (email-only gate): the client no longer collects a password. Fall back
+  // to a fixed, known password so the NOT NULL password_hash column stays
+  // satisfied and these accounts remain loggable-in after the demo. The normal
+  // password flow still works if a real password is sent.
+  const effectivePassword =
+    typeof password === "string" && password.length > 0
+      ? password
+      : DEMO_DEFAULT_PASSWORD;
+  validatePassword(effectivePassword);
+
+  const passwordHash = await bcrypt.hash(effectivePassword, SALT_ROUNDS);
 
   const user = await prisma.user.create({
     data: {

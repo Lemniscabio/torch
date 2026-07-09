@@ -5,11 +5,12 @@ export async function handleAuth(req: Request, res: Response) {
   try {
     const { email, password, action } = req.body;
 
-    if (!email || !password) {
-      res.status(400).json({ error: "Email and password are required." });
+    if (!email) {
+      res.status(400).json({ error: "Email is required." });
       return;
     }
 
+    // DEMO (email-only gate): signup no longer requires a password. Login still does.
     if (action === "signup") {
       const user = await authService.signup(email, password);
       res.json({ ok: true, user });
@@ -17,6 +18,10 @@ export async function handleAuth(req: Request, res: Response) {
     }
 
     if (action === "login") {
+      if (!password) {
+        res.status(400).json({ error: "Email and password are required." });
+        return;
+      }
       const user = await authService.login(email, password);
       res.json({ ok: true, user });
       return;

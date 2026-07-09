@@ -6,10 +6,10 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
+  demoSignUpSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
   signInSchema,
-  signUpSchema,
 } from '@/lib/schemas';
 import { useAuth } from '@/lib/auth-context';
 import { api, type ApiError } from '@/lib/api';
@@ -47,7 +47,7 @@ export function LoginForm({
     : isForgot
       ? forgotPasswordSchema
       : isSignup
-        ? signUpSchema
+        ? demoSignUpSchema // DEMO (email-only gate): signup validates email only.
         : signInSchema;
 
   const {
@@ -106,7 +106,9 @@ export function LoginForm({
         setSuccessMessage('Password updated. You can sign in now.');
         return;
       }
-      if (isSignup) await signUp(values.email, values.password);
+      // DEMO (email-only gate): signup sends no password; the backend
+      // generates one so the account still gets a valid password_hash.
+      if (isSignup) await signUp(values.email, '');
       else await signIn(values.email, values.password);
       router.replace(next);
     } catch (err) {
@@ -132,7 +134,7 @@ export function LoginForm({
           : isForgot
             ? 'We will send a secure reset link to your email.'
             : isSignup
-              ? 'Use your work email. We do not accept personal addresses.'
+              ? 'Enter your work email to unlock your report.'
               : 'Welcome back.'}
       </p>
 
@@ -156,11 +158,11 @@ export function LoginForm({
           </Field>
         ) : null}
 
-        {!isForgot ? (
+        {!isForgot && !isSignup ? (
           <Field
             label={isReset ? 'New password' : 'Password'}
             htmlFor="password"
-            hint={isSignup || isReset ? 'At least 8 characters.' : undefined}
+            hint={isReset ? 'At least 8 characters.' : undefined}
             error={errors.password?.message as string | undefined}
           >
             <Input
@@ -174,7 +176,7 @@ export function LoginForm({
           </Field>
         ) : null}
 
-        {isSignup || isReset ? (
+        {isReset ? (
           <Field
             label="Confirm password"
             htmlFor="confirmPassword"
@@ -234,21 +236,20 @@ export function LoginForm({
             </button>
           </p>
         ) : null}
-        <p className="text-meta">
-          {isReset || isForgot
-            ? 'Remembered it?'
-            : isSignup
-              ? 'Already have an account?'
-              : 'New to Torch?'}{' '}
-          <button
-            type="button"
-            onClick={() => switchMode(isSignup || isForgot || isReset ? 'login' : 'signup')}
-            className="underline decoration-[var(--color-ink-300)] underline-offset-[3px] transition-colors hover:decoration-[var(--color-ink-900)]"
-            style={{ color: 'var(--color-ink-900)' }}
-          >
-            {isSignup || isForgot || isReset ? 'Sign in instead' : 'Create an account'}
-          </button>
-        </p>
+        {/* DEMO (email-only gate): no sign-in/create-account switch in signup mode. */}
+        {!isSignup ? (
+          <p className="text-meta">
+            {isReset || isForgot ? 'Remembered it?' : 'New to Torch?'}{' '}
+            <button
+              type="button"
+              onClick={() => switchMode(isForgot || isReset ? 'login' : 'signup')}
+              className="underline decoration-[var(--color-ink-300)] underline-offset-[3px] transition-colors hover:decoration-[var(--color-ink-900)]"
+              style={{ color: 'var(--color-ink-900)' }}
+            >
+              {isForgot || isReset ? 'Sign in instead' : 'Create an account'}
+            </button>
+          </p>
+        ) : null}
         <p className="text-meta mt-3">
           <Link
             href="https://lemnisca.bio/torch"

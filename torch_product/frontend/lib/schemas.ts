@@ -34,6 +34,11 @@ export const signUpSchema = z
     message: 'Passwords do not match.',
   });
 
+// DEMO (email-only gate): signup collects just the work email, no password.
+export const demoSignUpSchema = z.object({
+  email: workEmailSchema,
+});
+
 export const forgotPasswordSchema = z.object({
   email: emailSchema,
 });

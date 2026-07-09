@@ -67,30 +67,13 @@ export default function AssessPage() {
 function AssessHeader() {
   const auth = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setMenuOpen(false);
-    }
-    function onResize() {
-      if (window.innerWidth >= 768) setMenuOpen(false);
-    }
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('resize', onResize);
-    };
-  }, [menuOpen]);
 
   if (auth.status === 'loading') {
     return <AssessHeaderPlaceholder />;
   }
 
   if (auth.status === 'authed') {
-    return <TopNav user={auth.user} />;
+    return <TopNav />;
   }
 
   return (
@@ -112,28 +95,13 @@ function AssessHeader() {
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-7 md:flex">
-          <Link
-            href="/dashboard"
-            className="group relative text-[14px] text-white/70 transition-[color,transform] duration-150 ease-out hover:text-white active:scale-[0.985]"
-          >
-            <span>Dashboard</span>
-            <span
-              aria-hidden
-              className="absolute -bottom-1 left-0 h-px w-0 bg-white transition-[width] duration-200 ease-out group-hover:w-full"
-            />
-          </Link>
+        <div className="flex items-center gap-3">
           <Link
             href="/assess"
-            aria-current="page"
-            className="group relative text-[14px] font-medium text-white transition-[color,transform] duration-150 ease-out active:scale-[0.985]"
+            className="inline-flex items-center rounded-full bg-white px-4 py-2 text-[13px] font-medium text-black transition-[background-color,transform] duration-150 ease-out active:scale-[0.97]"
           >
-            <span>New assessment</span>
-            <span aria-hidden className="absolute -bottom-1 left-0 h-px w-full bg-white" />
+            New assessment
           </Link>
-        </nav>
-
-        <div className="hidden items-center gap-3 md:flex">
           <button
             type="button"
             onClick={(e) => {
@@ -148,70 +116,6 @@ function AssessHeader() {
           >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
-          <Link
-            href="/login?next=/results"
-            className="inline-flex items-center rounded-full border border-white/15 px-4 py-2 text-[14px] font-medium text-white/85 transition-[background-color,color,transform] duration-150 ease-out hover:bg-white/10 hover:text-white active:scale-[0.97]"
-          >
-            Sign in
-          </Link>
-        </div>
-
-        <div className="flex items-center gap-3 md:hidden">
-          <Link
-            href="/login?next=/results"
-            className="inline-flex items-center rounded-full bg-white px-3.5 py-2 text-[13px] font-medium text-black transition-[background-color,transform] duration-150 ease-out active:scale-[0.97]"
-          >
-            Sign in
-          </Link>
-          <button
-            type="button"
-            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-white transition-colors duration-200 hover:bg-white/10"
-          >
-            <HamburgerIcon open={menuOpen} />
-          </button>
-        </div>
-      </div>
-
-      <div
-        id="torch-nav-mobile"
-        role="menu"
-        className="md:hidden"
-        style={{
-          display: 'grid',
-          gridTemplateRows: menuOpen ? '1fr' : '0fr',
-          transition: 'grid-template-rows 260ms cubic-bezier(0.16, 1, 0.3, 1)',
-        }}
-      >
-        <div style={{ overflow: 'hidden', minHeight: 0 }}>
-          <nav
-            className="relative z-10 flex flex-col gap-1 px-6 pb-6"
-            aria-label="Mobile primary"
-          >
-            <Link
-              href="/dashboard"
-              onClick={() => setMenuOpen(false)}
-              className="flex items-center justify-between rounded-xl px-3 py-3 text-[16px] font-medium text-white/85 transition-colors duration-150 hover:bg-white/5"
-            >
-              <span>Dashboard</span>
-            </Link>
-            <Link
-              onClick={() => setMenuOpen(false)}
-              href="/assess"
-              aria-current="page"
-              className="flex items-center justify-between rounded-xl bg-white/10 px-3 py-3 text-[16px] font-medium text-white transition-colors duration-150"
-            >
-              <span>New assessment</span>
-              <span
-                aria-hidden
-                className="text-[12px] font-medium tracking-[0.06em] uppercase text-white/55"
-              >
-                Current
-              </span>
-            </Link>
-          </nav>
         </div>
       </div>
     </header>
@@ -518,48 +422,6 @@ function MoonIcon() {
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function HamburgerIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      fill="none"
-      aria-hidden
-      style={{ transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1)' }}
-    >
-      <line
-        x1="2"
-        y1="5"
-        x2="16"
-        y2="5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        style={{
-          transformOrigin: '9px 5px',
-          transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1)',
-          transform: open ? 'translateY(4px) rotate(45deg)' : 'none',
-        }}
-      />
-      <line
-        x1="2"
-        y1="13"
-        x2="16"
-        y2="13"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        style={{
-          transformOrigin: '9px 13px',
-          transition: 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1)',
-          transform: open ? 'translateY(-4px) rotate(-45deg)' : 'none',
-        }}
       />
     </svg>
   );

@@ -12,8 +12,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (auth.status === 'guest') {
-      const next = encodeURIComponent(pathname || '/dashboard');
-      router.replace(`/login?next=${next}`);
+      // DEMO (email-only gate): send guests to the assessment flow rather than
+      // the password /login page, which is a dead-end without a password.
+      router.replace('/assess');
     }
   }, [auth.status, pathname, router]);
 
@@ -25,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <MobileGate />
       <div className="hidden min-h-dvh flex-col md:flex">
-        <TopNav user={auth.user} />
+        <TopNav />
         <div className="flex-1">{children}</div>
       </div>
     </>
